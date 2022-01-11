@@ -1,5 +1,6 @@
 import os
 import argparse
+from datetime import datetime
 
 import torch
 
@@ -11,7 +12,7 @@ from torch.cuda.amp.autocast_mode import autocast
 
 from tools.ops import *
 from tools.utils import makedirs
-from models.networks_2 import ComposeNet, find_tensor_contour
+from models.networks_2 import ComposeNet, find_tensor_contour, DEFAULT_MAX_POINTS
 from datasets .dataset import BDataset
 
 def train_collate_fn(batch):
@@ -76,21 +77,24 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, dest='lr', default=1e-4)
     parser.add_argument('--gpu', type=int, dest='gpu', default=0)
     parser.add_argument('--epoch', type=int, dest='epochs', default=20)
-    parser.add_argument('--batchsize', type=int, dest='batchsize', default=16)
+    parser.add_argument('--batchsize', type=int, dest='batchsize', default=32)
     #
     parser.add_argument('--workers', type=int, dest='workers', default=0)
     # 
     parser.add_argument('--img_size', type=int, dest='img_size', default=256)
+    parser.add_argument('--max_points', type=int, dest='max_points', default=DEFAULT_MAX_POINTS)
     #
     parser.add_argument('--res_output', type=str, dest='res_output', default='./results')
     parser.add_argument('--model_output', type=str, dest='model_output', default='./logs')
     parser.add_argument('--viz_freq', type=int, dest='viz_freq', default=16)
     args = parser.parse_args()
 
+    args.model_output = '{}_{}'.format(args.model_output, datetime.now().strftime("%Y%m%d-%H%M%S"))
+
     makedirs(args.res_output)
     makedirs(args.model_output)
 
-    record_txt = open(os.path.join(args.model_output, "record.txt"), "a+")
+    record_txt = open(os.path.join(args.model_output, "record.txt"), "w")
     for arg in vars(args):
         record_txt.write('{:35}{:20}\n'.format(arg, str(getattr(args, arg))))
     record_txt.close()
@@ -114,7 +118,7 @@ if __name__ == "__main__":
         collate_fn=train_collate_fn, 
         pin_memory=True)
     
-    net = ComposeNet()
+    net = ComposeNet(max_points=args.max_points)
     net.cuda(args.gpu)
 
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
