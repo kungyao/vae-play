@@ -94,9 +94,9 @@ class BDataset(Dataset):
         self.ifTest = ifTest
 
         for cls_name in os.listdir(data_path):
-            if num_classes is not None:
-                if int(cls_name) >= num_classes:
-                    continue
+            # if num_classes is not None:
+            #     if int(cls_name) >= num_classes:
+            #         continue
             cls_folder = os.path.join(data_path, cls_name)
             for patch in os.listdir(cls_folder):
                 # if "mask" in patch and "mask_edge" not in patch:
