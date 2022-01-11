@@ -89,7 +89,7 @@ if __name__ == "__main__":
     parser.add_argument('--viz_freq', type=int, dest='viz_freq', default=16)
     args = parser.parse_args()
 
-    args.model_output = '{}_{}'.format(args.model_output, datetime.now().strftime("%Y%m%d-%H%M%S"))
+    args.model_output = os.path.join(args.model_output, datetime.now().strftime("%Y%m%d-%H%M%S"))
 
     makedirs(args.res_output)
     makedirs(args.model_output)
