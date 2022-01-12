@@ -87,14 +87,50 @@ class CDataset(Dataset):
         target = torch.stack([rs, xs, ys], dim=-1)
         return imgs, target
 
+# transform = transforms.Compose([
+#     transforms.ToTensor(),
+#     transforms.Resize((args.img_size, args.img_size), interpolation=TF.InterpolationMode.NEAREST),
+#     # https://github.com/pytorch/vision/issues/9#issuecomment-304224800
+#     # Should make sure that img and target do the same operation.
+#     # 
+#     # transforms.RandomRotation(10, fill=0.0), 
+#     # transforms.RandomHorizontalFlip(),
+#     # transforms.RandomVerticalFlip()
+# ])
+class BTransform(object):
+    def __init__(self, img_size) -> None:
+        super().__init__()
+        self.img_size = img_size
+
+    def __call__(self, img, bimg, contour, key_contour):
+        img = TF.to_tensor(img)
+        bimg = TF.to_tensor(bimg)
+        
+        target_h, target_w = self.img_size
+        origin_h, origin_w = img.shape[-2:]
+        scale_h = target_h / origin_h
+        scale_w = target_w / origin_w
+
+        img = TF.resize(img, self.img_size)
+        bimg = TF.resize(bimg, self.img_size)
+        contour = torch.FloatTensor(bimg)
+        key_contour = torch.FloatTensor(bimg)
+
+        contour[:, 0] *= scale_w
+        contour[:, 1] *= scale_h
+
+        key_contour[:, 0] *= scale_w
+        key_contour[:, 1] *= scale_h
+
+        return img, bimg, contour, key_contour
 
 class BDataset(Dataset):
-    def __init__(self, data_path, padding=1, transform=None, ifTest=False, debug=None) -> None:
+    def __init__(self, data_path, img_size, padding=1, ifTest=False, debug=None) -> None:
         self.imgs = []
         self.bimgs = []
         self.contours = []
         self.key_contours = []
-        self.transform = transform
+        self.transform = BTransform(img_size)
         self.ifTest = ifTest
 
         for cls_name in os.listdir(data_path):
@@ -146,15 +182,7 @@ class BDataset(Dataset):
         # img = np.stack([img, img, img], axis=-1)
         # expand_img = self.dilate(img, iteration=2)
         # img = expand_img - img
-        cnt = torch.tensor(self.contours[idx])
-        key_cnt = torch.tensor(self.key_contours[idx])
-        if self.transform is not None:
-            img = self.transform(img)
-            bimg = self.transform(bimg)
-        else:
-            img = TF.to_tensor(img)
-            bimg = TF.to_tensor(bimg)
-
+        img, bimg, cnt, key_cnt = self.transform(img, bimg, self.contours[idx], self.key_contours[idx])
         return img, bimg, cnt, key_cnt
  
 

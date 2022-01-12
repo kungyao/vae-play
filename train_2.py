@@ -97,17 +97,7 @@ if __name__ == "__main__":
     record_txt.close()
 
     padding =1
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Resize((args.img_size, args.img_size), interpolation=TF.InterpolationMode.NEAREST),
-        # https://github.com/pytorch/vision/issues/9#issuecomment-304224800
-        # Should make sure that img and target do the same operation.
-        # 
-        # transforms.RandomRotation(10, fill=0.0), 
-        # transforms.RandomHorizontalFlip(),
-        # transforms.RandomVerticalFlip()
-    ])
-    dset = BDataset(args.path, padding=padding, transform=transform)
+    dset = BDataset(args.path, args.img_size, padding=padding)
     dloader = DataLoader(
         dset, 
         batch_size=args.batchsize, 
