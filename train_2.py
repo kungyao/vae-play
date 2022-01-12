@@ -8,22 +8,20 @@ import torchvision.transforms.functional as TF
 from tqdm import tqdm
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from torch.cuda.amp.autocast_mode import autocast
 
 from tools.ops import *
 from tools.utils import makedirs
-from models.networks_2 import ComposeNet, find_tensor_contour, DEFAULT_MAX_POINTS
+from models.networks_2 import ComposeNet, DEFAULT_MAX_POINTS
 from datasets .dataset import BDataset
 
 def train_collate_fn(batch):
-    imgs, bimgs = zip(*batch)
+    imgs, bimgs, cnt, key_cnt = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
-    return imgs, bimgs
+    return imgs, bimgs, cnt, key_cnt
 
 def train(args, epoch, net, optim, train_loader):
     net.train()
-    padding = net.padding_for_contour
     
     count = 0
     avg_loss = {
@@ -33,11 +31,7 @@ def train(args, epoch, net, optim, train_loader):
 
     bar = tqdm(train_loader)
     bar.set_description(f"epoch[{epoch}];")
-    for i, (imgs, bimgs) in enumerate(bar):
-        cnts_map = find_tensor_contour(F.pad(bimgs, (padding, padding, padding, padding), "constant", 0), max_points=256, if_key_points=True, key_point_threshold=2)
-        contours = cnts_map["contours"]
-        key_contours = cnts_map["key_contours"]
-
+    for i, (imgs, bimgs, contours, key_contours) in enumerate(bar):
         # for x in range(imgs.size(0)):
         #     TF.to_pil_image(imgs[x]).save(os.path.join(args.res_output, f"{epoch}_{x}_a.png"))
         #     TF.to_pil_image(bimgs[x]).save(os.path.join(args.res_output, f"{epoch}_{x}_b.png"))
@@ -102,6 +96,7 @@ if __name__ == "__main__":
         record_txt.write('{:35}{:20}\n'.format(arg, str(getattr(args, arg))))
     record_txt.close()
 
+    padding =1
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize((args.img_size, args.img_size), interpolation=TF.InterpolationMode.NEAREST),
@@ -112,7 +107,7 @@ if __name__ == "__main__":
         # transforms.RandomHorizontalFlip(),
         # transforms.RandomVerticalFlip()
     ])
-    dset = BDataset(args.path, transform=transform, num_classes=4)
+    dset = BDataset(args.path, padding=padding, transform=transform)
     dloader = DataLoader(
         dset, 
         batch_size=args.batchsize, 
@@ -121,7 +116,7 @@ if __name__ == "__main__":
         collate_fn=train_collate_fn, 
         pin_memory=True)
     
-    net = ComposeNet(max_points=args.max_points)
+    net = ComposeNet(padding=padding, max_points=args.max_points)
     net.cuda(args.gpu)
 
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)

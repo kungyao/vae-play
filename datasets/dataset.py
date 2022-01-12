@@ -6,10 +6,12 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF 
+from rdp import rdp
 from PIL import Image
 from torch.utils.data import Dataset
 
 from tools.utils import encode_circle_param, generate_circle_param, generate_circle_img
+from tools.utils import find_contour
 
 CHANNEL_SIZE = 1
 
@@ -87,16 +89,15 @@ class CDataset(Dataset):
 
 
 class BDataset(Dataset):
-    def __init__(self, data_path, transform=None, num_classes=None, ifTest=False, debug=None) -> None:
+    def __init__(self, data_path, padding=1, transform=None, ifTest=False, debug=None) -> None:
         self.imgs = []
         self.bimgs = []
+        self.contours = []
+        self.key_contours = []
         self.transform = transform
         self.ifTest = ifTest
 
         for cls_name in os.listdir(data_path):
-            # if num_classes is not None:
-            #     if int(cls_name) >= num_classes:
-            #         continue
             cls_folder = os.path.join(data_path, cls_name)
             for patch in os.listdir(cls_folder):
                 # if "mask" in patch and "mask_edge" not in patch:
@@ -113,8 +114,24 @@ class BDataset(Dataset):
                 self.bimgs.append(os.path.join(cls_folder, f"{name}_mask.{ext}"))
                 if debug is not None:
                     if len(self.imgs) >= debug:
-                        return
+                        break
+            if debug is not None:
+                if len(self.imgs) >= debug:
+                    break
+        self.preprocess(padding)
     
+    def preprocess(self, padding):
+        for b_path in self.bimgs:
+            bimg = Image.open(b_path, "r").convert("RGB")
+            bimg = np.array(bimg)
+            white = np.where((bimg[:,:,0]==255) & (bimg[:,:,1]==255) & (bimg[:,:,2]==255))
+            bimg[white] = (0, 0, 0)
+            bimg = bimg[:,:,0]
+            bimg = np.pad(bimg, ((padding, padding), (padding, padding)), constant_values=(0, ))
+            contour = find_contour(bimg, 256)
+            self.contours.append(contour)
+            self.key_contours.append(rdp(contour))
+
     def __len__(self):
         return len(self.imgs)
 
@@ -129,12 +146,15 @@ class BDataset(Dataset):
         # img = np.stack([img, img, img], axis=-1)
         # expand_img = self.dilate(img, iteration=2)
         # img = expand_img - img
+        cnt = torch.tensor(self.contours[idx])
+        key_cnt = torch.tensor(self.key_contours[idx])
         if self.transform is not None:
             img = self.transform(img)
             bimg = self.transform(bimg)
         else:
             img = TF.to_tensor(img)
             bimg = TF.to_tensor(bimg)
-        return img, bimg
+
+        return img, bimg, cnt, key_cnt
  
 

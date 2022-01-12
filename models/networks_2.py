@@ -1,16 +1,13 @@
 from typing import List
 
-import cv2
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rdp import rdp
-from skimage import measure
 from torch.nn.functional import grid_sample
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
+from tools.utils import find_contour
 try:
     from models.blocks import *
 except:
@@ -26,65 +23,16 @@ except:
 
 CASE = 1
 DEFAULT_MAX_POINTS = 256
-def find_tensor_contour(x: torch.Tensor, max_points: int=DEFAULT_MAX_POINTS, threshold: float=0.5, if_key_points:bool =False, key_point_threshold:float =2):
-    def select_contour(cs):
-        select_i = -1
-        max_area = 0
-        for i, c in enumerate(cs):
-            c = np.expand_dims(c.astype(np.float32), 1)
-            c = cv2.UMat(c)
-            area = abs(cv2.contourArea(c))
-            if area > max_area:
-                max_area = area
-                select_i = i
-        return cs[select_i]
-    def process_contour(c):
-        new_c = []
-        for pt in c:
-            y, x = pt
-            y = round(y)
-            x = round(x)
-            new_item = [y, x]
-            if len(new_c) != 0:
-                if new_c[-1] == new_item:
-                    continue
-            new_c.append(new_item)
-        # Remove end point because it is same as start point.
-        del new_c[-1]
-        return np.array(new_c)
-    def resample_points(c):
-        l = len(c)
-        sample_step = (l - 2) / (max_points - 2)
-        new_c = [c[0]]
-        for i in range(max_points - 2):
-            idx = round((i + 1) * sample_step)
-            new_c.append(c[idx])
-        new_c.append(c[-1])
-        return np.array(new_c)
+def find_tensor_contour(x: torch.Tensor, max_points: int=DEFAULT_MAX_POINTS, threshold: float=0.5):
     contours = []
-    key_contours = []
     for mm in x:
         tmp_m = mm.detach().cpu()
         tmp_m = tmp_m.squeeze().numpy().copy()
         tmp_m[tmp_m>=threshold] = 1
         tmp_m[tmp_m<threshold] = 0
-        contour = measure.find_contours(tmp_m, 0.8)
-        if len(contour) != 0:
-            contour = select_contour(contour)
-            contour = process_contour(contour)
-            # to [x, y]
-            contour = np.array(np.flip(contour, axis=1))
-            if if_key_points:
-                key_contour = rdp(contour, epsilon=key_point_threshold)
-                key_contours.append(torch.tensor(key_contour, dtype=x.dtype))
-            if len(contour) > max_points:
-                contour = resample_points(contour)
+        contour = find_contour(tmp_m, max_points=max_points)
         contours.append(torch.tensor(contour, dtype=x.dtype))
-    
-    return {
-        "contours": contours,
-        "key_contours": key_contours
-    }
+    return contours
 
 # B * MAX_POINTS * H * W
 def make_embeding_tensor(contours: List, img_size: torch.Size, max_points: int=DEFAULT_MAX_POINTS):
@@ -208,7 +156,7 @@ class RefineNet(nn.Module):
         return x
 
 class ComposeNet(nn.Module):
-    def __init__(self, max_points=DEFAULT_MAX_POINTS):
+    def __init__(self, padding:int =1, max_points=DEFAULT_MAX_POINTS):
         super(ComposeNet, self).__init__()
         # Feature extract
         self.feature_net = FeatureNet()
@@ -220,7 +168,7 @@ class ComposeNet(nn.Module):
         self.add_coords = AddCoords()
 
         self.max_points = max_points
-        self.padding_for_contour = 1
+        self.padding_for_contour = padding
         # Initialize parameter
         self.initialize(self.mask_net)
         self.initialize(self.refine_net)
@@ -243,7 +191,6 @@ class ComposeNet(nn.Module):
         mask_out = self.mask_net(feature)
         # B * [N * 2]. (N may be different)
         contours = find_tensor_contour(F.pad(mask_out.sigmoid(), (padding, padding, padding, padding), "constant", 0), max_points=self.max_points)
-        contours = contours["contours"]
         if CASE == 1:
             feature = F.pad(feature, (padding, padding, padding, padding), "constant", 0)
             feature = self.add_coords(feature)
