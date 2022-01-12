@@ -97,7 +97,8 @@ if __name__ == "__main__":
     record_txt.close()
 
     padding =1
-    dset = BDataset(args.path, args.img_size, padding=padding)
+    # width height
+    dset = BDataset(args.path, (args.img_size, args.img_size), padding=padding)
     dloader = DataLoader(
         dset, 
         batch_size=args.batchsize, 

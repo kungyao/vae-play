@@ -104,24 +104,14 @@ class BTransform(object):
 
     def __call__(self, img, bimg, contour, key_contour):
         img = TF.to_tensor(img)
+        img = TF.resize(img, self.img_size, interpolation=TF.InterpolationMode.NEAREST)
+
         bimg = TF.to_tensor(bimg)
+        bimg = TF.resize(bimg, self.img_size, interpolation=TF.InterpolationMode.NEAREST)
         
-        target_h, target_w = self.img_size
-        origin_h, origin_w = img.shape[-2:]
-        scale_h = target_h / origin_h
-        scale_w = target_w / origin_w
-
-        img = TF.resize(img, self.img_size)
-        bimg = TF.resize(bimg, self.img_size)
-        contour = torch.FloatTensor(bimg)
-        key_contour = torch.FloatTensor(bimg)
-
-        contour[:, 0] *= scale_w
-        contour[:, 1] *= scale_h
-
-        key_contour[:, 0] *= scale_w
-        key_contour[:, 1] *= scale_h
-
+        contour = torch.FloatTensor(contour)
+        key_contour = torch.FloatTensor(key_contour)
+        
         return img, bimg, contour, key_contour
 
 class BDataset(Dataset):
@@ -130,7 +120,7 @@ class BDataset(Dataset):
         self.bimgs = []
         self.contours = []
         self.key_contours = []
-        self.transform = BTransform(img_size)
+        self.transform = BTransform((img_size[1], img_size[0]))
         self.ifTest = ifTest
 
         for cls_name in os.listdir(data_path):
@@ -154,11 +144,13 @@ class BDataset(Dataset):
             if debug is not None:
                 if len(self.imgs) >= debug:
                     break
-        self.preprocess(padding)
+        self.preprocess(img_size, padding)
     
-    def preprocess(self, padding):
+    def preprocess(self, img_size, padding):
         for b_path in self.bimgs:
             bimg = Image.open(b_path, "r").convert("RGB")
+            # 預先resize，計算reszie後的contour。
+            bimg = bimg.resize(img_size, resample=Image.NEAREST)
             bimg = np.array(bimg)
             white = np.where((bimg[:,:,0]==255) & (bimg[:,:,1]==255) & (bimg[:,:,2]==255))
             bimg[white] = (0, 0, 0)
