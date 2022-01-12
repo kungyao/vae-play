@@ -111,7 +111,7 @@ class BTransform(object):
         
         contour = torch.FloatTensor(contour)
         key_contour = torch.FloatTensor(key_contour)
-        
+
         return img, bimg, contour, key_contour
 
 class BDataset(Dataset):
@@ -158,7 +158,7 @@ class BDataset(Dataset):
             bimg = np.pad(bimg, ((padding, padding), (padding, padding)), constant_values=(0, ))
             contour = find_contour(bimg, 256)
             self.contours.append(contour)
-            self.key_contours.append(rdp(contour))
+            self.key_contours.append(rdp(contour, epsilon=2))
 
     def __len__(self):
         return len(self.imgs)
