@@ -19,11 +19,11 @@ def train_collate_fn(batch):
     imgs, bimgs = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
-    contours = find_tensor_contour(bimgs, max_points=1024)
-    return imgs, bimgs, contours
+    return imgs, bimgs
 
 def train(args, epoch, net, optim, train_loader):
     net.train()
+    padding = net.padding_for_contour
     
     count = 0
     avg_loss = {
@@ -33,7 +33,10 @@ def train(args, epoch, net, optim, train_loader):
 
     bar = tqdm(train_loader)
     bar.set_description(f"epoch[{epoch}];")
-    for i, (imgs, bimgs, contours) in enumerate(bar):
+    for i, (imgs, bimgs) in enumerate(bar):
+        cnts_map = find_tensor_contour(F.pad(bimgs, (padding, padding, padding, padding), "constant", 0), max_points=256, if_key_points=True, key_point_threshold=2)
+        contours = cnts_map["contours"]
+        key_contours = cnts_map["key_contours"]
 
         # for x in range(imgs.size(0)):
         #     TF.to_pil_image(imgs[x]).save(os.path.join(args.res_output, f"{epoch}_{x}_a.png"))
@@ -49,7 +52,7 @@ def train(args, epoch, net, optim, train_loader):
         pred_regs = preds["contour_regressions"]
 
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, bimgs) + compute_dice_loss(pred_masks.sigmoid(), bimgs)
-        loss_regress = compute_pt_regression_loss(pred_cnts, pred_regs, contours)
+        loss_regress = compute_pt_regression_loss(pred_cnts, pred_regs, contours, key_contours)
         losses = loss_mask + loss_regress
 
         optim.zero_grad()

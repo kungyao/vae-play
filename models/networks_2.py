@@ -26,7 +26,7 @@ except:
 
 CASE = 1
 DEFAULT_MAX_POINTS = 256
-def find_tensor_contour(x: torch.Tensor, max_points: int=DEFAULT_MAX_POINTS, threshold: float=0.5):
+def find_tensor_contour(x: torch.Tensor, max_points: int=DEFAULT_MAX_POINTS, threshold: float=0.5, if_key_points:bool =False, key_point_threshold:float =2):
     def select_contour(cs):
         select_i = -1
         max_area = 0
@@ -62,6 +62,7 @@ def find_tensor_contour(x: torch.Tensor, max_points: int=DEFAULT_MAX_POINTS, thr
         new_c.append(c[-1])
         return np.array(new_c)
     contours = []
+    key_contours = []
     for mm in x:
         tmp_m = mm.detach().cpu()
         tmp_m = tmp_m.squeeze().numpy().copy()
@@ -73,10 +74,17 @@ def find_tensor_contour(x: torch.Tensor, max_points: int=DEFAULT_MAX_POINTS, thr
             contour = process_contour(contour)
             # to [x, y]
             contour = np.array(np.flip(contour, axis=1))
+            if if_key_points:
+                key_contour = rdp(contour, epsilon=key_point_threshold)
+                key_contours.append(torch.tensor(key_contour, dtype=x.dtype))
             if len(contour) > max_points:
                 contour = resample_points(contour)
         contours.append(torch.tensor(contour, dtype=x.dtype))
-    return contours
+    
+    return {
+        "contours": contours,
+        "key_contours": key_contours
+    }
 
 # B * MAX_POINTS * H * W
 def make_embeding_tensor(contours: List, img_size: torch.Size, max_points: int=DEFAULT_MAX_POINTS):
@@ -108,7 +116,7 @@ def resample_feature(feature, contours, max_points: int=DEFAULT_MAX_POINTS):
             normalized_pts[:, 0] = (normalized_pts[:, 0] - w_half) / w_half
             normalized_pts[:, 1] = (normalized_pts[:, 1] - h_half) / h_half
             normalized_pts = normalized_pts.unsqueeze(0).unsqueeze(0)
-            resample = grid_sample(feature[i][None], normalized_pts, mode='bilinear')
+            resample = grid_sample(feature[i][None], normalized_pts, mode='bicubic')
             resample = resample.squeeze()
             resample = resample.permute(1, 0)
             if max_points > resample.size(0):
@@ -235,6 +243,7 @@ class ComposeNet(nn.Module):
         mask_out = self.mask_net(feature)
         # B * [N * 2]. (N may be different)
         contours = find_tensor_contour(F.pad(mask_out.sigmoid(), (padding, padding, padding, padding), "constant", 0), max_points=self.max_points)
+        contours = contours["contours"]
         if CASE == 1:
             feature = F.pad(feature, (padding, padding, padding, padding), "constant", 0)
             feature = self.add_coords(feature)
