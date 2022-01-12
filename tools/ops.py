@@ -50,7 +50,7 @@ def compute_pt_regression_loss(predict_contours, predict_regressions, target_con
             loss = sub_contour_loss(p_cnt, p_regress, target_contours[i], weight_p2t=1.0, weight_t2p=0.1)
             # 計算原始contour的特異點(RDP)，然後利用這組新的contour計算一個新的loss，不然利用全部點去算loss_t2p的話，總loss會被平均掉。
             # 設weight_p2t為0，著重在每個key point是否有被找到。
-            loss_key = sub_contour_loss(p_cnt, p_regress, target_key_contours[i], weight_p2t=0.0, weight_t2p=1.0)
+            loss_key = sub_contour_loss(p_cnt, p_regress, target_key_contours[i], weight_p2t=0.0, weight_t2p=2.0)
             losses.append(loss+loss_key)
         else:
             losses.append(p_regress.sum() * 0)
