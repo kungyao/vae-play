@@ -54,7 +54,7 @@ def compute_pt_regression_loss(predict_contours, predict_regressions, target_con
             losses.append(loss+loss_key)
         else:
             losses.append(p_regress.sum() * 0)
-    losses = torch.sum(torch.stack(losses))
+    losses = torch.mean(torch.stack(losses))
     return losses
 
 def compute_hinge_loss(logit, mode):

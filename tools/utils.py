@@ -72,6 +72,8 @@ def generate_batch_circle(n: int, radius: torch.Tensor, center_x: torch.Tensor, 
 
 def find_contour(mask_img: np.ndarray, max_points: int=256):
     def select_contour(cs):
+        if len(cs) == 1:
+            return cs[0]
         select_i = -1
         max_area = 0
         for i, c in enumerate(cs):
@@ -110,8 +112,9 @@ def find_contour(mask_img: np.ndarray, max_points: int=256):
     if len(contour) != 0:
         contour = select_contour(contour)
         contour = process_contour(contour)
-        # to [x, y]
-        contour = np.array(np.flip(contour, axis=1))
-        if len(contour) > max_points:
-            contour = resample_points(contour)
+        if len(contour) != 0:
+            # to [x, y]
+            contour = np.array(np.flip(contour, axis=1))
+            if len(contour) > max_points:
+                contour = resample_points(contour)
     return contour
