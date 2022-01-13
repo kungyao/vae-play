@@ -159,11 +159,12 @@ class ComposeNet(nn.Module):
     def __init__(self, padding:int =1, max_points=DEFAULT_MAX_POINTS):
         super(ComposeNet, self).__init__()
         # Feature extract
-        self.feature_net = FeatureNet()
+        self.mask_feature_net = FeatureNet()
+        self.param_feature_net = FeatureNet()
         # Generate initial mask region
-        self.mask_net = MaskNet(self.feature_net.out_channels)
+        self.mask_net = MaskNet(self.mask_feature_net.out_channels)
         # Refine contour point on mask region. Plus 2 for coords.
-        self.refine_net = RefineNet(max_points, self.feature_net.out_channels+2)
+        self.refine_net = RefineNet(max_points, self.param_feature_net.out_channels+2)
         # Expand two new channel for coordinate
         self.add_coords = AddCoords()
 
@@ -186,23 +187,27 @@ class ComposeNet(nn.Module):
     def forward(self, x):
         device = x.device
         padding = self.padding_for_contour
-        feature = self.feature_net(x)
 
-        mask_out = self.mask_net(feature)
+        # 
+        mask_feature = self.mask_feature_net(x)
+        mask_out = self.mask_net(mask_feature)
+        # 
+        param_feature = self.param_feature_net(x)
+
         # B * [N * 2]. (N may be different)
         contours = find_tensor_contour(F.pad(mask_out.sigmoid(), (padding, padding, padding, padding), "constant", 0), max_points=self.max_points)
         if CASE == 1:
-            feature = F.pad(feature, (padding, padding, padding, padding), "constant", 0)
+            feature = F.pad(param_feature, (padding, padding, padding, padding), "constant", 0)
             feature = self.add_coords(feature)
             # B * MAX_POINTS * C
             feature_embed = resample_feature(feature, contours, max_points=self.max_points)
         elif CASE == 2:
             # B * T(MAX_POINTS) * Hc * Wc
             # Let non-contour-point patch be zero.
-            contours_embeding = make_embeding_tensor(contours, feature.shape[-2:], max_points=self.max_points)
+            contours_embeding = make_embeding_tensor(contours, param_feature.shape[-2:], max_points=self.max_points)
             contours_embeding = contours_embeding.to(device)
             # Scale to original size
-            feature = F.interpolate(feature, scale_factor=4, mode='bilinear')
+            feature = F.interpolate(param_feature, scale_factor=4, mode='bilinear')
             feature = F.pad(feature, (padding, padding, padding, padding), "constant", 0)
             # B * (C + MAX_POINTS + 2) * Hc * Wc
             feature_embed = torch.cat([self.add_coords(feature), contours_embeding], dim=1)
