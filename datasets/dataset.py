@@ -144,7 +144,13 @@ class BDataset(Dataset):
             if debug is not None:
                 if len(self.imgs) >= debug:
                     break
-        self.preprocess(img_size, padding)
+        
+        if not self.ifTest:
+            self.preprocess(img_size, padding)
+        else:
+            for i in range(len(self.imgs)):
+                self.contours.append([])
+                self.key_contours.append([])
     
     def preprocess(self, img_size, padding):
         for b_path in self.bimgs:
