@@ -11,7 +11,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 from tools.utils import encode_circle_param, generate_circle_param, generate_circle_img
-from tools.utils import find_contour
+from tools.utils import find_contour, resample_points
 
 CHANNEL_SIZE = 1
 
@@ -115,7 +115,7 @@ class BTransform(object):
         return img, bimg, contour, key_contour
 
 class BDataset(Dataset):
-    def __init__(self, data_path, img_size, padding=1, ifTest=False, debug=None) -> None:
+    def __init__(self, data_path, img_size, padding=1, max_points=256, ifTest=False, debug=None) -> None:
         self.imgs = []
         self.bimgs = []
         self.contours = []
@@ -146,13 +146,13 @@ class BDataset(Dataset):
                     break
         
         if not self.ifTest:
-            self.preprocess(img_size, padding)
+            self.preprocess(img_size, padding, max_points)
         else:
             for i in range(len(self.imgs)):
                 self.contours.append([])
                 self.key_contours.append([])
     
-    def preprocess(self, img_size, padding):
+    def preprocess(self, img_size, padding, max_points):
         for b_path in self.bimgs:
             bimg = Image.open(b_path, "r").convert("RGB")
             # 預先resize，計算reszie後的contour。
@@ -162,9 +162,9 @@ class BDataset(Dataset):
             bimg[white] = (0, 0, 0)
             bimg = bimg[:,:,0]
             bimg = np.pad(bimg, ((padding, padding), (padding, padding)), constant_values=(0, ))
-            contour = find_contour(bimg, 256)
-            self.contours.append(contour)
-            self.key_contours.append(rdp(contour, epsilon=2))
+            contour = find_contour(bimg)
+            self.key_contours.append(rdp(contour, epsilon=4))
+            self.contours.append(resample_points(contour, max_points=max_points))
 
     def __len__(self):
         return len(self.imgs)
@@ -182,5 +182,4 @@ class BDataset(Dataset):
         # img = expand_img - img
         img, bimg, cnt, key_cnt = self.transform(img, bimg, self.contours[idx], self.key_contours[idx])
         return img, bimg, cnt, key_cnt
- 
 

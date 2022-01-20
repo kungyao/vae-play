@@ -98,7 +98,7 @@ if __name__ == "__main__":
 
     padding =1
     # width height
-    dset = BDataset(args.path, (args.img_size, args.img_size), padding=padding)
+    dset = BDataset(args.path, (args.img_size, args.img_size), padding=padding, max_points=args.max_points)
     dloader = DataLoader(
         dset, 
         batch_size=args.batchsize, 

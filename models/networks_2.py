@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.nn.functional import grid_sample
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
-from tools.utils import find_contour
+from tools.utils import find_contour, resample_points
 try:
     from models.blocks import *
 except:
@@ -30,7 +30,8 @@ def find_tensor_contour(x: torch.Tensor, max_points: int=DEFAULT_MAX_POINTS, thr
         tmp_m = tmp_m.squeeze().numpy().copy()
         tmp_m[tmp_m>=threshold] = 1
         tmp_m[tmp_m<threshold] = 0
-        contour = find_contour(tmp_m, max_points=max_points)
+        contour = find_contour(tmp_m)
+        contour = resample_points(contour, max_points=max_points)
         contours.append(torch.tensor(contour, dtype=x.dtype))
     return contours
 

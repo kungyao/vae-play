@@ -70,7 +70,7 @@ def generate_batch_circle(n: int, radius: torch.Tensor, center_x: torch.Tensor, 
     batch = torch.stack(batch, dim=0)
     return batch
 
-def find_contour(mask_img: np.ndarray, max_points: int=256):
+def find_contour(mask_img: np.ndarray):
     def select_contour(cs):
         if len(cs) == 1:
             return cs[0]
@@ -98,15 +98,6 @@ def find_contour(mask_img: np.ndarray, max_points: int=256):
         # Remove end point because it is same as start point.
         del new_c[-1]
         return np.array(new_c)
-    def resample_points(c):
-        l = len(c)
-        sample_step = (l - 2) / (max_points - 2)
-        new_c = [c[0]]
-        for i in range(max_points - 2):
-            idx = round((i + 1) * sample_step)
-            new_c.append(c[idx])
-        new_c.append(c[-1])
-        return np.array(new_c)
 
     contour = measure.find_contours(mask_img, 0.8)
     if len(contour) != 0:
@@ -115,6 +106,16 @@ def find_contour(mask_img: np.ndarray, max_points: int=256):
         if len(contour) != 0:
             # to [x, y]
             contour = np.array(np.flip(contour, axis=1))
-            if len(contour) > max_points:
-                contour = resample_points(contour)
     return contour
+
+def resample_points(contour, max_points: int=256):
+    l = len(contour)
+    if l > max_points:
+        sample_step = (l - 2) / (max_points - 2)
+        new_c = [contour[0]]
+        for i in range(max_points - 2):
+            idx = round((i + 1) * sample_step)
+            new_c.append(contour[idx])
+        new_c.append(contour[-1])
+    return np.array(new_c)
+    
