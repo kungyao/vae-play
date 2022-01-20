@@ -117,5 +117,6 @@ def resample_points(contour, max_points: int=256):
             idx = round((i + 1) * sample_step)
             new_c.append(contour[idx])
         new_c.append(contour[-1])
-    return np.array(new_c)
+        return np.array(new_c)
+    return contour
     
