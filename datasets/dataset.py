@@ -102,22 +102,26 @@ class BTransform(object):
         super().__init__()
         self.img_size = img_size
 
-    def __call__(self, img, bimg, contour, key_contour):
+    def __call__(self, img, bimg, eimg, contour, key_contour):
         img = TF.to_tensor(img)
         img = TF.resize(img, self.img_size, interpolation=TF.InterpolationMode.NEAREST)
 
         bimg = TF.to_tensor(bimg)
         bimg = TF.resize(bimg, self.img_size, interpolation=TF.InterpolationMode.NEAREST)
+
+        eimg = TF.to_tensor(eimg)
+        eimg = TF.resize(eimg, self.img_size, interpolation=TF.InterpolationMode.NEAREST)
         
         contour = torch.FloatTensor(contour)
         key_contour = torch.FloatTensor(key_contour)
 
-        return img, bimg, contour, key_contour
+        return img, bimg, eimg, contour, key_contour
 
 class BDataset(Dataset):
     def __init__(self, data_path, img_size, padding=1, max_points=256, ifTest=False, debug=None) -> None:
         self.imgs = []
         self.bimgs = []
+        self.eimgs = []
         self.contours = []
         self.key_contours = []
         self.transform = BTransform((img_size[1], img_size[0]))
@@ -138,6 +142,7 @@ class BDataset(Dataset):
                 # original image
                 self.imgs.append(os.path.join(cls_folder, f"{name}_ori.{ext}"))
                 self.bimgs.append(os.path.join(cls_folder, f"{name}_mask.{ext}"))
+                self.eimgs.append(os.path.join(cls_folder, f"{name}_mask_edge.{ext}"))
                 if debug is not None:
                     if len(self.imgs) >= debug:
                         break
@@ -172,14 +177,18 @@ class BDataset(Dataset):
     def __getitem__(self, idx):
         img = Image.open(self.imgs[idx], "r").convert("RGB")
         bimg = Image.open(self.bimgs[idx], "r").convert("RGB")
+        eimg = Image.open(self.eimgs[idx], "r").convert("RGB")
+        # Process bubble mask
         bimg = np.array(bimg)
         white = np.where((bimg[:,:,0]==255) & (bimg[:,:,1]==255) & (bimg[:,:,2]==255))
         bimg[white] = (0, 0, 0)
         bimg = bimg[:,:,0]
-        # to 3 channel
-        # img = np.stack([img, img, img], axis=-1)
-        # expand_img = self.dilate(img, iteration=2)
-        # img = expand_img - img
-        img, bimg, cnt, key_cnt = self.transform(img, bimg, self.contours[idx], self.key_contours[idx])
-        return img, bimg, cnt, key_cnt
+        # Process edge mask
+        eimg = np.array(eimg)
+        white = np.where((eimg[:,:,0]==255) & (eimg[:,:,1]==255) & (eimg[:,:,2]==255))
+        eimg[white] = (0, 0, 0)
+        eimg = eimg[:,:,0]
+        # Transform
+        img, bimg, eimg, cnt, key_cnt = self.transform(img, bimg, eimg, self.contours[idx], self.key_contours[idx])
+        return img, bimg, eimg, cnt, key_cnt
 

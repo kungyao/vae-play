@@ -15,45 +15,51 @@ from models.networks_2 import ComposeNet, DEFAULT_MAX_POINTS
 from datasets .dataset import BDataset
 
 def train_collate_fn(batch):
-    imgs, bimgs, cnt, key_cnt = zip(*batch)
+    imgs, bimgs, eimgs, cnt, key_cnt = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
-    return imgs, bimgs, cnt, key_cnt
+    eimgs = torch.stack(eimgs, dim=0)
+    return imgs, bimgs, eimgs, cnt, key_cnt
 
 def train(args, epoch, net, optim, train_loader):
     net.train()
     
     count = 0
     avg_loss = {
+        "loss_edge": 0,
         "loss_mask": 0,
         "loss_regress": 0
     }
 
     bar = tqdm(train_loader)
     bar.set_description(f"epoch[{epoch}];")
-    for i, (imgs, bimgs, contours, key_contours) in enumerate(bar):
+    for i, (imgs, bimgs, eimgs, contours, key_contours) in enumerate(bar):
         # for x in range(imgs.size(0)):
         #     TF.to_pil_image(imgs[x]).save(os.path.join(args.res_output, f"{epoch}_{x}_a.png"))
         #     TF.to_pil_image(bimgs[x]).save(os.path.join(args.res_output, f"{epoch}_{x}_b.png"))
 
         imgs = imgs.cuda(args.gpu)
         bimgs = bimgs.cuda(args.gpu)
+        eimgs = eimgs.cuda(args.gpu)
         # contours = [c.cuda(args.gpu) for c in contours]
 
         preds = net(imgs)
+        pred_egdes = preds["edges"]
         pred_masks = preds["masks"]
         pred_cnts = preds["contours"]
         pred_regs = preds["contour_regressions"]
 
+        loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_egdes, eimgs) + compute_dice_loss(pred_egdes.sigmoid(), eimgs)
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, bimgs) + compute_dice_loss(pred_masks.sigmoid(), bimgs)
         loss_regress = compute_pt_regression_loss(pred_cnts, pred_regs, contours, key_contours)
-        losses = loss_mask + loss_regress
+        losses = loss_egde + loss_mask + loss_regress
 
         optim.zero_grad()
         losses.backward()
         optim.step()
         
         next_count = count + imgs.size(0)
+        avg_loss["loss_edge"] = (avg_loss["loss_edge"] * count + loss_egde.item()) / next_count
         avg_loss["loss_mask"] = (avg_loss["loss_mask"] * count + loss_mask.item()) / next_count
         avg_loss["loss_regress"] = (avg_loss["loss_regress"] * count + loss_regress.item()) / next_count
         count = next_count

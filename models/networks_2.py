@@ -111,9 +111,10 @@ class MaskNet(nn.Module):
         in_channel = in_channel // 4
         # self.attn2 = SCSEBlock(in_channel, reduction=4)
         # 
+        self.out_channels = 1
         self.predictor = nn.Sequential(
             Conv2d(in_channel, in_channel // 2, 3, stride=1, bn=False, activate=None), 
-            Conv2d(in_channel // 2, 1, 3, stride=1, bn=False, activate=None)
+            Conv2d(in_channel // 2, self.out_channels, 3, stride=1, bn=False, activate=None)
         )
 
     def forward(self, x):
@@ -124,6 +125,24 @@ class MaskNet(nn.Module):
         # x = self.attn2(x)
         x = F.interpolate(x, scale_factor=2, mode='bilinear')
         # x = self.attn3(x)
+        x = self.predictor(x)
+        return x
+
+class EdgeNet(nn.Module):
+    def __init__(self, in_channel):
+        super(EdgeNet, self).__init__()
+        self.conv1 = nn.Sequential(
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=False), 
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=False),
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=False)
+        )
+        self.predictor = nn.Sequential(
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=False, activate=None), 
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=False, activate=None)
+        )
+
+    def forward(self, x):
+        x = self.conv1(x)
         x = self.predictor(x)
         return x
 
@@ -163,6 +182,8 @@ class ComposeNet(nn.Module):
         self.feature_net = FeatureNet()
         # Generate initial mask region
         self.mask_net = MaskNet(self.feature_net.out_channels)
+        # Generate edge mask (?) according to mask net.
+        self.edge_net = EdgeNet(self.mask_net.out_channels)
         # Refine contour point on mask region. Plus 2 for coords.
         self.refine_net = RefineNet(max_points, self.feature_net.out_channels+2)
         # Expand two new channel for coordinate
@@ -188,8 +209,10 @@ class ComposeNet(nn.Module):
         device = x.device
         padding = self.padding_for_contour
         feature = self.feature_net(x)
-
+        # Predict mask
         mask_out = self.mask_net(feature)
+        # Predict edge
+        edge_out = self.edge_net(mask_out)
         # B * [N * 2]. (N may be different)
         contours = find_tensor_contour(F.pad(mask_out.sigmoid(), (padding, padding, padding, padding), "constant", 0), max_points=self.max_points)
         if CASE == 1:
@@ -211,6 +234,7 @@ class ComposeNet(nn.Module):
         contour_regressions = self.refine_net(feature_embed)
         
         return {
+            "edges": edge_out,
             "masks": mask_out,
             "contours": contours,
             "contour_regressions": contour_regressions
