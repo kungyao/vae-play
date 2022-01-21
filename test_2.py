@@ -27,7 +27,7 @@ def point_filter(pts, img_size):
 
 # Only return imgs and bimgs.
 def test_collate_fn(batch):
-    imgs, bimgs, cnt, key_cnt = zip(*batch)
+    imgs, bimgs, eimgs, cnt, key_cnt = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
     return imgs, bimgs
@@ -99,7 +99,7 @@ if __name__ == "__main__":
     else:
         if args.model_path is None:
             raise ValueError("args.model_path should not be None.")
-        obj = torch.load(args.model_path)
+        obj = torch.load(args.model_path, map_location=f"cuda:{args.gpu}")
         net = obj["networks"]
     padding = net.padding_for_contour
     res_output = "./results"
@@ -123,19 +123,23 @@ if __name__ == "__main__":
             size = torch.Size([h+padding*2, w+padding*2])
 
             preds = net(imgs)
+            pred_edges = preds["edges"].cpu()
             pred_masks = preds["masks"].cpu()
             pred_cnts = preds["contours"]
             pred_regs = preds["contour_regressions"].cpu()
 
             imgs = F.pad(imgs.cpu(), (padding, padding, padding, padding), "constant", 0)
+            pred_edges = F.pad(pred_edges.sigmoid(), (padding, padding, padding, padding), "constant", 0)
             pred_masks = F.pad(pred_masks.sigmoid(), (padding, padding, padding, padding), "constant", 0)
             # To 3 channels.
+            pred_edges = pred_edges.repeat(1, 3, 1, 1)
             pred_masks = pred_masks.repeat(1, 3, 1, 1)
+            # 
             img_contours = viz_cnotours(pred_cnts, size)
             img_contours_regress = viz_resample_contours(pred_cnts, pred_regs, size)
 
             vutils.save_image(
-                torch.cat([imgs, pred_masks, img_contours, img_contours_regress], dim=0), 
+                torch.cat([imgs, pred_masks, pred_edges, img_contours, img_contours_regress], dim=0), 
                 os.path.join(res_output, f"{i}.png"),
                 nrow=b, 
                 padding=2, 
