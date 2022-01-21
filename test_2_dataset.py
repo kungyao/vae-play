@@ -11,10 +11,11 @@ from datasets .dataset import BDataset
 from tools.utils import makedirs
 
 def train_collate_fn(batch):
-    imgs, bimgs, cnt, key_cnt = zip(*batch)
+    imgs, bimgs, eimgs, cnt, key_cnt = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
-    return imgs, bimgs, cnt, key_cnt
+    eimgs = torch.stack(eimgs, dim=0)
+    return imgs, bimgs, eimgs, cnt, key_cnt
 
 if __name__ == "__main__":
 
@@ -60,7 +61,7 @@ if __name__ == "__main__":
     res_output = "./tests"
     makedirs(res_output)
 
-    for i, (imgs, bimgs, contours, key_contours) in enumerate(dloader):
+    for i, (imgs, bimgs, eimgs, contours, key_contours) in enumerate(dloader):
         b = imgs.size(0)
         h, w = imgs.shape[-2:]
         size = torch.Size([h+padding*2, w+padding*2])
@@ -69,9 +70,11 @@ if __name__ == "__main__":
         imgs = F.pad(imgs.cpu(), (padding, padding, padding, padding), "constant", 0)
         bimgs = bimgs.repeat(1, 3, 1, 1)
         bimgs = F.pad(bimgs.cpu(), (padding, padding, padding, padding), "constant", 0)
+        eimgs = eimgs.repeat(1, 3, 1, 1)
+        eimgs = F.pad(eimgs.cpu(), (padding, padding, padding, padding), "constant", 0)
 
         vutils.save_image(
-            torch.cat([imgs, bimgs, img_contours], dim=0), 
+            torch.cat([imgs, bimgs, eimgs, img_contours], dim=0), 
             os.path.join(res_output, f"{i}.png"),
             nrow=b, 
             padding=2, 
