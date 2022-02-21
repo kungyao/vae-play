@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class Conv2d(nn.Module):
     def __init__(self, in_channel, out_channel, kernel_size, stride=1, bn=True, activate='relu'):
@@ -111,3 +112,15 @@ class AddCoords(nn.Module):
         x = torch.cat([x, new_coord_i, new_coord_j], dim=1)
         return x
 
+class Up(nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super().__init__()
+        self.conv = nn.Sequential(
+            Conv2d(in_channel, out_channel, 3, stride=1), 
+            Conv2d(out_channel, out_channel, 3, stride=1)
+        )
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = F.interpolate(x, scale_factor=2, mode='bilinear')
+        return x

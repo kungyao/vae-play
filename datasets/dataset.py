@@ -1,4 +1,6 @@
 import os
+import sys
+import random
 from scipy.signal.signaltools import resample
 
 import cv2
@@ -9,6 +11,7 @@ import torchvision.transforms.functional as TF
 from rdp import rdp
 from PIL import Image
 from torch.utils.data import Dataset
+import torchvision.transforms as transforms
 
 from tools.utils import encode_circle_param, generate_circle_param, generate_circle_img
 from tools.utils import find_contour, resample_points
@@ -98,33 +101,105 @@ class CDataset(Dataset):
 #     # transforms.RandomVerticalFlip()
 # ])
 class BTransform(object):
-    def __init__(self, img_size) -> None:
+    def __init__(self, img_size, if_rnadom_gen) -> None:
         super().__init__()
         self.img_size = img_size
+        self.if_rnadom_gen = if_rnadom_gen
+        if if_rnadom_gen:
+            # Fill with white
+            self.rd_rotation_fw = transforms.RandomRotation(20, fill=1.0)
+            # Fill with black
+            self.rd_rotation_fb = transforms.RandomRotation(20, fill=0.0)
+            self.rd_vertical = transforms.RandomVerticalFlip()
+            self.rd_horizontal = transforms.RandomHorizontalFlip()
+
+    def do_operation(self, img, seed, is_white_bg):
+        if img is not None:
+            img = TF.to_tensor(img)
+            img = TF.resize(img, self.img_size, interpolation=TF.InterpolationMode.NEAREST)
+            if self.if_rnadom_gen:
+                random.seed(seed)
+                torch.manual_seed(seed)
+                if is_white_bg:
+                    img = self.rd_rotation_fw(img)
+                else:
+                    img = self.rd_rotation_fb(img)
+                img = self.rd_vertical(img)
+                img = self.rd_horizontal(img)
+        return img
 
     def __call__(self, img, bimg, eimg, contour, key_contour):
-        img = TF.to_tensor(img)
-        img = TF.resize(img, self.img_size, interpolation=TF.InterpolationMode.NEAREST)
+        # Set random seed for doing same operation for input data.
+        seed = random.randint(0, 2147483647)
+        # Do
+        img = self.do_operation(img, seed, True)
+        bimg = self.do_operation(bimg, seed, False)
+        eimg = self.do_operation(eimg, seed, False)
 
-        bimg = TF.to_tensor(bimg)
-        bimg = TF.resize(bimg, self.img_size, interpolation=TF.InterpolationMode.NEAREST)
-
-        eimg = TF.to_tensor(eimg)
-        eimg = TF.resize(eimg, self.img_size, interpolation=TF.InterpolationMode.NEAREST)
-        
         contour = torch.FloatTensor(contour)
         key_contour = torch.FloatTensor(key_contour)
 
         return img, bimg, eimg, contour, key_contour
 
-class BDataset(Dataset):
+# Bubble & Edge
+class BEDataset(Dataset):
+    def __init__(self, data_path, img_size, if_test=False) -> None:
+        super().__init__()
+        self.imgs = []
+        self.labels = []
+        self.transform = BTransform((img_size[1], img_size[0]), True)
+
+        self.if_test = if_test
+        for cls_name in os.listdir(data_path):
+            if not if_test:
+                if cls_name not in ["1"]:
+                    continue
+            else:
+                if cls_name not in ["test"]:
+                    continue
+            
+            cls_folder = os.path.join(data_path, cls_name)
+            for patch in os.listdir(cls_folder):
+                if "layer" in patch or "mask" in patch or "edge" in patch :
+                    continue
+                name, ext = patch.split(".")[:2]
+                self.imgs.append(os.path.join(cls_folder, f"{name}.{ext}"))
+
+                if not if_test:
+                    self.labels.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
+    
+    def __len__(self):
+        return len(self.imgs)
+
+    def __getitem__(self, idx):
+        # 
+        img = Image.open(self.imgs[idx], "r").convert("RGB")
+        
+        if not self.if_test:
+            # 
+            label = Image.open(self.labels[idx], "r").convert("RGB")
+            label = np.array(label)
+            bg = np.where((label[:,:,0]==255) & (label[:,:,1]==255) & (label[:,:,2]==255))
+            label[bg] = (0, 0, 0)
+            # 
+            eimg = label[:, :, 1]
+            bimg = label[:, :, 0]
+        else:
+            bimg = None
+            eimg = None
+        #
+        img, bimg, eimg, _, _ = self.transform(img, bimg, eimg, [], [])
+        return img, bimg, eimg
+
+# Bubble & Contour
+class BCDataset(Dataset):
     def __init__(self, data_path, img_size, padding=1, max_points=256, ifTest=False, debug=None) -> None:
         self.imgs = []
         self.bimgs = []
         self.eimgs = []
         self.contours = []
         self.key_contours = []
-        self.transform = BTransform((img_size[1], img_size[0]))
+        self.transform = BTransform((img_size[1], img_size[0]), False)
         self.ifTest = ifTest
 
         for cls_name in os.listdir(data_path):
@@ -132,7 +207,7 @@ class BDataset(Dataset):
             for patch in os.listdir(cls_folder):
                 # if "mask" in patch and "mask_edge" not in patch:
                 #     self.imgs.append(os.path.join(cls_folder, patch))
-                if "mask" in patch or "mask_edge" in patch or "ori" in patch:
+                if "mask" in patch or "edge" in patch:
                     continue
                 item = patch.split(".")
                 name = item[0]
@@ -140,7 +215,7 @@ class BDataset(Dataset):
                 # non-text and external noise
                 # self.imgs.append(os.path.join(cls_folder, patch))
                 # original image
-                self.imgs.append(os.path.join(cls_folder, f"{name}_ori.{ext}"))
+                self.imgs.append(os.path.join(cls_folder, f"{name}_edge.{ext}"))
                 self.bimgs.append(os.path.join(cls_folder, f"{name}_mask.{ext}"))
                 self.eimgs.append(os.path.join(cls_folder, f"{name}_mask_edge.{ext}"))
                 if debug is not None:
@@ -191,4 +266,7 @@ class BDataset(Dataset):
         # Transform
         img, bimg, eimg, cnt, key_cnt = self.transform(img, bimg, eimg, self.contours[idx], self.key_contours[idx])
         return img, bimg, eimg, cnt, key_cnt
+
+
+
 

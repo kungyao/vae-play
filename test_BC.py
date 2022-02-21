@@ -10,8 +10,8 @@ import torchvision.transforms.functional as TF
 from torchvision import transforms
 from torch.utils.data import DataLoader
 
-from datasets .dataset import BDataset
-from models.networks_2 import ComposeNet
+from datasets .dataset import BCDataset
+from models.networks_BC import ComposeNet
 from tools.utils import makedirs
 
 def point_filter(pts, img_size):
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     makedirs(res_output)
 
     data_loader = DataLoader(
-        BDataset(args.path, (args.img_size, args.img_size), padding=padding, ifTest=True), 
+        BCDataset(args.path, (args.img_size, args.img_size), padding=padding, ifTest=True), 
         batch_size=args.batchsize, 
         shuffle=False, 
         num_workers=4, 
