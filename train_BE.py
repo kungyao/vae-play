@@ -14,6 +14,7 @@ from tools.ops import *
 from tools.utils import makedirs
 from models.networks_BE import ComposeNet
 from datasets .dataset import BEDataset
+from test_BE import save_test_batch
 
 def train_collate_fn(batch):
     imgs, bimgs, eimgs = zip(*batch)
@@ -67,23 +68,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
             for key in avg_loss:
                 res_str += f"{key}: {round(avg_loss[key], 6)}; "
             print(res_str)
-        
-            b = imgs.size(0)
-            imgs = imgs.cpu()
-            pred_edges = pred_edges.cpu()
-            pred_masks = pred_masks.cpu()
-
-            pred_edges = pred_edges.repeat(1, 3, 1, 1)
-            pred_masks = pred_masks.repeat(1, 3, 1, 1)
-
-            vutils.save_image(
-                torch.cat([imgs, pred_masks, pred_edges], dim=0), 
-                os.path.join(args.res_output, f"{i+1}.png"),
-                nrow=b, 
-                padding=2, 
-                pad_value=1
-            )
-
+            save_test_batch(imgs, preds, args.res_output, f"{i+1}")
     return
 
 if __name__ == "__main__":

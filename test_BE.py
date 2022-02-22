@@ -2,6 +2,7 @@ import os
 import argparse
 
 import cv2
+from numpy import dtype
 import torch
 from torch._C import Value
 import torch.nn.functional as F
@@ -21,6 +22,43 @@ def test_collate_fn(batch):
     # bimgs = torch.stack(bimgs, dim=0)
     # eimgs = torch.stack(eimgs, dim=0)
     return imgs # , bimgs, eimgs
+
+def save_test_batch(imgs, predictions, result_path, result_name):
+    b = imgs.size(0)
+    pred_edges = predictions["edges"].cpu()
+    pred_masks = predictions["masks"].cpu()
+    imgs = (imgs.cpu() * 255).to(dtype=torch.uint8)
+
+    pred_edges = pred_edges.cpu()
+    pred_masks = pred_masks.cpu()
+
+    pred_edges[pred_edges>=0.5] = 1
+    pred_edges[pred_edges<0.5] = 0
+
+    pred_masks[pred_masks>=0.5] = 1
+    pred_masks[pred_masks<0.5] = 0
+
+    pred_edges = pred_edges.to(dtype=torch.bool)
+    pred_masks = pred_masks.to(dtype=torch.bool)
+    # To 3 channels.
+    # pred_edges = pred_edges.repeat(1, 3, 1, 1)
+    # pred_masks = pred_masks.repeat(1, 3, 1, 1)
+
+    result_edges = []
+    result_bubbles = []
+    for j in range(b):
+        result_edges.append(vutils.draw_segmentation_masks(imgs[j], masks=pred_edges[j], alpha=0.5, colors=(255, 0, 0)))
+        result_bubbles.append(vutils.draw_segmentation_masks(imgs[j], masks=pred_masks[j], alpha=0.5, colors=(255, 0, 0)))
+    result_edges = torch.stack(result_edges, dim=0).to(dtype=torch.float) / 255
+    result_bubbles = torch.stack(result_bubbles, dim=0).to(dtype=torch.float) / 255
+
+    vutils.save_image(
+        torch.cat([result_edges, result_bubbles], dim=0), 
+        os.path.join(result_path, f"{result_name}.png"),
+        nrow=b, 
+        padding=2, 
+        pad_value=1
+    )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
@@ -54,22 +92,7 @@ if __name__ == "__main__":
     net.eval()
     with torch.no_grad():
         for i, (imgs) in enumerate(data_loader):
-            b = imgs.size(0)
             imgs = imgs.cuda(args.gpu)
-
             preds = net(imgs)
-            pred_edges = preds["edges"].cpu()
-            pred_masks = preds["masks"].cpu()
-
-            imgs = imgs.cpu()
-            # To 3 channels.
-            pred_edges = pred_edges.repeat(1, 3, 1, 1)
-            pred_masks = pred_masks.repeat(1, 3, 1, 1)
+            save_test_batch(imgs, preds, res_output, f"test_{i}")
             
-            vutils.save_image(
-                torch.cat([imgs, pred_masks, pred_edges], dim=0), 
-                os.path.join(res_output, f"test_{i}.png"),
-                nrow=b, 
-                padding=2, 
-                pad_value=1
-            )

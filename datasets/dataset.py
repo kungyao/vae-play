@@ -152,7 +152,7 @@ class BEDataset(Dataset):
         self.if_test = if_test
         for cls_name in os.listdir(data_path):
             if not if_test:
-                if cls_name not in ["1"]:
+                if cls_name not in ["1", "2"]:
                     continue
             else:
                 if cls_name not in ["test"]:
