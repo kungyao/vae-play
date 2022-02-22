@@ -113,14 +113,21 @@ class AddCoords(nn.Module):
         return x
 
 class Up(nn.Module):
-    def __init__(self, in_channel, out_channel):
+    def __init__(self, in_channel, out_channel, if_add_coord=False):
         super().__init__()
+        self.if_add_coord = if_add_coord
+        coord_channel = 2 if if_add_coord else 0
         self.conv = nn.Sequential(
+            Conv2d(in_channel + coord_channel, in_channel, 3, stride=1), 
             Conv2d(in_channel, out_channel, 3, stride=1), 
             Conv2d(out_channel, out_channel, 3, stride=1)
         )
+        if if_add_coord:
+            self.add_coord = AddCoords()
 
     def forward(self, x):
+        if self.if_add_coord:
+            x = self.add_coord(x)
         x = self.conv(x)
         x = F.interpolate(x, scale_factor=2, mode='bilinear')
         return x
