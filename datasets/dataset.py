@@ -146,6 +146,7 @@ class BEDataset(Dataset):
     def __init__(self, data_path, img_size, if_test=False) -> None:
         super().__init__()
         self.imgs = []
+        self.masks = []
         self.labels = []
         self.transform = BTransform((img_size[1], img_size[0]), True)
 
@@ -166,7 +167,8 @@ class BEDataset(Dataset):
                 self.imgs.append(os.path.join(cls_folder, f"{name}.{ext}"))
 
                 if not if_test:
-                    self.labels.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
+                    self.labels.append(int(cls_name))
+                    self.masks.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
     
     def __len__(self):
         return len(self.imgs)
@@ -177,19 +179,21 @@ class BEDataset(Dataset):
         
         if not self.if_test:
             # 
-            label = Image.open(self.labels[idx], "r").convert("RGB")
-            label = np.array(label)
-            bg = np.where((label[:,:,0]==255) & (label[:,:,1]==255) & (label[:,:,2]==255))
-            label[bg] = (0, 0, 0)
+            mask = Image.open(self.masks[idx], "r").convert("RGB")
+            mask = np.array(mask)
+            bg = np.where((mask[:,:,0]==255) & (mask[:,:,1]==255) & (mask[:,:,2]==255))
+            mask[bg] = (0, 0, 0)
             # 
-            eimg = label[:, :, 1]
-            bimg = label[:, :, 0]
+            eimg = mask[:, :, 1]
+            bimg = mask[:, :, 0]
+            label = self.labels[idx]
         else:
             bimg = None
             eimg = None
+            label = None
         #
         img, bimg, eimg, _, _ = self.transform(img, bimg, eimg, [], [])
-        return img, bimg, eimg
+        return img, bimg, eimg, label
 
 # Bubble & Contour
 class BCDataset(Dataset):

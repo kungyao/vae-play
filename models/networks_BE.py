@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
@@ -96,6 +97,48 @@ class ComposeNet(nn.Module):
             "edges": edge_out,
             "masks": mask_out
         }
+
+class Discriminator(nn.Module):
+    def __init__(self, types, img_size, max_conv_dim=256):
+        super().__init__()
+        self.backbone = []
+        # Backbone output image size = 2**final_log_size
+        final_log_size = 3
+        repeat_num = int(np.log2(img_size)) - final_log_size - 1
+        # Concate input mask and edge together, then get dim_in = 2.
+        dim_in = 2
+        dim_out = 32
+        self.backbone.append(Conv2d(dim_in, dim_out, 5, stride=2))
+        for _ in range(repeat_num):
+            dim_in = dim_out
+            dim_out = min(dim_in * 2, max_conv_dim)
+            self.backbone.append(Conv2d(dim_in, dim_out, 5, stride=2))
+        self.backbone = nn.Sequential(*self.backbone)
+
+        self.adv_final = []
+        self.aux_final = []
+        for _ in range(final_log_size - 2):
+            self.adv_final.append(Conv2d(dim_out, dim_out, 3, stride=2))
+            self.aux_final.append(Conv2d(dim_out, dim_out, 3, stride=2))
+        self.adv_final += [Conv2d(dim_out, 1, 1, stride=1)]
+        self.aux_final += [Conv2d(dim_out, types, 1, stride=1)]
+        self.adv_final = nn.Sequential(*self.adv_final)
+        self.aux_final = nn.Sequential(*self.aux_final)
+
+    def forward(self, mask, edge, labels):
+        # Concate input
+        x = torch.cat([mask, edge], dim=1)
+        # 
+        x = self.backbone(x)
+        # 
+        facticity = self.adv_final(x) # (batch, 1, )
+        bubble_type = self.aux_final(x) # (batch, types, )
+        facticity = facticity.view(facticity.size(0), facticity.size(1), -1).sum(-1).sigmoid()
+        bubble_type = bubble_type.view(bubble_type.size(0), bubble_type.size(1), -1).sum(-1).sigmoid()
+        # 
+        idx = torch.LongTensor(range(labels.size(0))).to(labels.device)
+        bubble_type = bubble_type[idx, labels] # (batch)
+        return facticity, bubble_type
 
 if __name__ == "__main__":
     print("")

@@ -17,7 +17,7 @@ from tools.utils import makedirs
 
 # Only return imgs and bimgs.
 def test_collate_fn(batch):
-    imgs, bimgs, eimgs = zip(*batch)
+    imgs, bimgs, eimgs, labels = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     # bimgs = torch.stack(bimgs, dim=0)
     # eimgs = torch.stack(eimgs, dim=0)
@@ -76,7 +76,7 @@ if __name__ == "__main__":
         if args.model_path is None:
             raise ValueError("args.model_path should not be None.")
         obj = torch.load(args.model_path, map_location=f"cuda:{args.gpu}")
-        net = obj["networks"]
+        nets = obj["networks"]
     res_output = "./results"
     makedirs(res_output)
 
@@ -88,6 +88,7 @@ if __name__ == "__main__":
         collate_fn=test_collate_fn, 
         pin_memory=True)
 
+    net = nets["NET"]
     net.cuda(args.gpu)
     net.eval()
     with torch.no_grad():
@@ -95,4 +96,4 @@ if __name__ == "__main__":
             imgs = imgs.cuda(args.gpu)
             preds = net(imgs)
             save_test_batch(imgs, preds, res_output, f"test_{i}")
-            
+
