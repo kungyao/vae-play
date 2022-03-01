@@ -40,9 +40,6 @@ def save_test_batch(imgs, predictions, result_path, result_name):
 
     pred_edges = pred_edges.to(dtype=torch.bool)
     pred_masks = pred_masks.to(dtype=torch.bool)
-    # To 3 channels.
-    # pred_edges = pred_edges.repeat(1, 3, 1, 1)
-    # pred_masks = pred_masks.repeat(1, 3, 1, 1)
 
     result_edges = []
     result_bubbles = []
@@ -52,8 +49,12 @@ def save_test_batch(imgs, predictions, result_path, result_name):
     result_edges = torch.stack(result_edges, dim=0).to(dtype=torch.float) / 255
     result_bubbles = torch.stack(result_bubbles, dim=0).to(dtype=torch.float) / 255
 
+    # To 3 channels.
+    # pred_edges = pred_edges.repeat(1, 3, 1, 1)
+    pred_masks = pred_masks.repeat(1, 3, 1, 1)
+
     vutils.save_image(
-        torch.cat([result_edges, result_bubbles], dim=0), 
+        torch.cat([result_edges, pred_masks, result_bubbles], dim=0), 
         os.path.join(result_path, f"{result_name}.png"),
         nrow=b, 
         padding=2, 
