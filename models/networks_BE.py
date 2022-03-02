@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
@@ -71,19 +72,6 @@ class ComposeNet(nn.Module):
         self.edge_net = EdgeNet(self.feature_net.out_channels)
         # Expand two new channel for coordinate
         self.add_coords = AddCoords()
-
-        # Initialize parameter
-        self.initialize(self.mask_net)
-
-    def initialize(self, mm: nn.Module):
-        for m in mm.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_uniform_(m.weight, mode="fan_in", nonlinearity="relu")
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         feature = self.feature_net(x)

@@ -3,25 +3,25 @@ import argparse
 from datetime import datetime
 
 import torch
-
 import torchvision.utils as vutils
 import torchvision.transforms.functional as TF
 from tqdm import tqdm, trange
 from torchvision import transforms
 from torch.utils.data import DataLoader
 
+from datasets .dataset import BEDataset
+from models.networks_BE import ComposeNet
+from test_BE import save_test_batch
 from tools.ops import *
 from tools.utils import makedirs
-from models.networks_BE import ComposeNet
-from datasets .dataset import BEDataset
-from test_BE import save_test_batch
 
 def train_collate_fn(batch):
-    imgs, bimgs, eimgs = zip(*batch)
+    imgs, bimgs, eimgs, labels = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
     eimgs = torch.stack(eimgs, dim=0)
-    return imgs, bimgs, eimgs
+    labels = torch.as_tensor(labels, dtype=torch.int64)
+    return imgs, bimgs, eimgs, labels
 
 def train(args, epoch, iterations, net, optim, train_loader):
     net.train()
@@ -35,14 +35,16 @@ def train(args, epoch, iterations, net, optim, train_loader):
     train_iter = iter(train_loader)
     for i in trange(iterations):
         try:
-            imgs, bimgs, eimgs = next(train_iter)
+            imgs, bimgs, eimgs, labels = next(train_iter)
         except:
             train_iter = iter(train_loader)
-            imgs, bimgs, eimgs = next(train_iter)
+            imgs, bimgs, eimgs, labels = next(train_iter)
 
+        b = imgs.size(0)
         imgs = imgs.cuda(args.gpu)
         bimgs = bimgs.cuda(args.gpu)
         eimgs = eimgs.cuda(args.gpu)
+        labels = labels.cuda(args.gpu)
         # contours = [c.cuda(args.gpu) for c in contours]
 
         preds = net(imgs)
@@ -68,7 +70,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
             for key in avg_loss:
                 res_str += f"{key}: {round(avg_loss[key], 6)}; "
             print(res_str)
-            save_test_batch(imgs, preds, args.res_output, f"{i+1}")
+            save_test_batch(imgs, preds, args.res_output, f"{epoch}_{i+1}")
     return
 
 if __name__ == "__main__":
@@ -113,10 +115,14 @@ if __name__ == "__main__":
         pin_memory=True)
     
     net = ComposeNet()
+
+    initialize_model(net.mask_net)
+    initialize_model(net.edge_net)
+
     net.cuda(args.gpu)
 
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, 10, gamma=0.5)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optim, 10, gamma=0.5)
 
     for epoch in range(args.epochs):
         train(args, epoch, args.iterations, net, optim, dloader)
@@ -128,5 +134,5 @@ if __name__ == "__main__":
             }, 
             os.path.join(args.model_output, f"{epoch}.ckpt")
         )
-        scheduler.step()
+        # scheduler.step()
 

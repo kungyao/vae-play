@@ -17,7 +17,7 @@ from tools.utils import makedirs
 
 # Only return imgs and bimgs.
 def test_collate_fn(batch):
-    imgs, bimgs, eimgs = zip(*batch)
+    imgs, bimgs, eimgs, labels = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     # bimgs = torch.stack(bimgs, dim=0)
     # eimgs = torch.stack(eimgs, dim=0)
