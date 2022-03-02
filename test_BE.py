@@ -23,7 +23,7 @@ def test_collate_fn(batch):
     # eimgs = torch.stack(eimgs, dim=0)
     return imgs # , bimgs, eimgs
 
-def save_test_batch(imgs, predictions, result_path, result_name):
+def save_test_batch(imgs, predictions, types, result_path, result_name):
     b = imgs.size(0)
     pred_edges = predictions["edges"].cpu()
     pred_masks = predictions["masks"].cpu()
@@ -52,10 +52,11 @@ def save_test_batch(imgs, predictions, result_path, result_name):
     # To 3 channels.
     # pred_edges = pred_edges.repeat(1, 3, 1, 1)
     pred_masks = pred_masks.repeat(1, 3, 1, 1)
+    labels_str = "_".join([str(x.item()) for x in types])
 
     vutils.save_image(
         torch.cat([result_edges, pred_masks, result_bubbles], dim=0), 
-        os.path.join(result_path, f"{result_name}.png"),
+        os.path.join(result_path, f"{result_name}_labels_{labels_str}.png"),
         nrow=b, 
         padding=2, 
         pad_value=1
@@ -90,11 +91,20 @@ if __name__ == "__main__":
         pin_memory=True)
 
     net = nets["NET"]
+    disc = nets["DISCRIMINATOR"]
+
     net.cuda(args.gpu)
+    disc.cuda(args.gpu)
+    
     net.eval()
+    disc.eval()
     with torch.no_grad():
         for i, (imgs) in enumerate(data_loader):
             imgs = imgs.cuda(args.gpu)
             preds = net(imgs)
-            save_test_batch(imgs, preds, res_output, f"test_{i}")
+            pred_edges = preds["edges"]
+            pred_masks = preds["masks"]
+            _, types = disc(pred_masks, pred_edges)
+            _, types = torch.max(types, dim=-1)
+            save_test_batch(imgs, preds, types, res_output, f"test_{i}")
 

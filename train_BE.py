@@ -103,7 +103,8 @@ def train(args, epoch, iterations, nets, optims, train_loader):
             for key in avg_loss:
                 res_str += f"{key}: {round(avg_loss[key], 6)}; "
             print(res_str)
-            save_test_batch(imgs, preds, args.res_output, f"{epoch}_{i+1}")
+            _, g_type = torch.max(g_type, dim=-1)
+            save_test_batch(imgs, preds, g_type, args.res_output, f"{epoch}_{i+1}")
     return
 
 if __name__ == "__main__":
@@ -149,6 +150,10 @@ if __name__ == "__main__":
     
     net = ComposeNet()
     disc = Discriminator(1+2, args.img_size)
+
+    initialize_model(net.mask_net)
+    initialize_model(net.edge_net)
+    initialize_model(disc)
 
     net.cuda(args.gpu)
     disc.cuda(args.gpu)
