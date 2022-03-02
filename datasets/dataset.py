@@ -107,9 +107,9 @@ class BTransform(object):
         self.if_rnadom_gen = if_rnadom_gen
         if if_rnadom_gen:
             # Fill with white
-            self.rd_rotation_fw = transforms.RandomRotation(20, fill=1.0)
+            self.rd_rotation_fw = transforms.RandomRotation(45, fill=1.0)
             # Fill with black
-            self.rd_rotation_fb = transforms.RandomRotation(20, fill=0.0)
+            self.rd_rotation_fb = transforms.RandomRotation(45, fill=0.0)
             self.rd_vertical = transforms.RandomVerticalFlip()
             self.rd_horizontal = transforms.RandomHorizontalFlip()
 
@@ -153,7 +153,7 @@ class BEDataset(Dataset):
         self.if_test = if_test
         for cls_name in os.listdir(data_path):
             if not if_test:
-                if cls_name not in ["1", "2"]:
+                if cls_name not in ["1", "2", "3"]:
                     continue
             else:
                 if cls_name not in ["test"]:
