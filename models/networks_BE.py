@@ -73,19 +73,6 @@ class ComposeNet(nn.Module):
         # Expand two new channel for coordinate
         self.add_coords = AddCoords()
 
-        # Initialize parameter
-        self.initialize(self.mask_net)
-
-    def initialize(self, mm: nn.Module):
-        for m in mm.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_uniform_(m.weight, mode="fan_in", nonlinearity="relu")
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
     def forward(self, x):
         feature = self.feature_net(x)
         # feature = self.add_coords(feature)
@@ -117,7 +104,7 @@ class Discriminator(nn.Module):
 
         self.adv_final = []
         self.aux_final = []
-        for _ in range(final_log_size - 2):
+        for _ in range(final_log_size):
             self.adv_final.append(Conv2d(dim_out, dim_out, 3, stride=2))
             self.aux_final.append(Conv2d(dim_out, dim_out, 3, stride=2))
         self.adv_final += [Conv2d(dim_out, 1, 1, stride=1)]
@@ -125,19 +112,16 @@ class Discriminator(nn.Module):
         self.adv_final = nn.Sequential(*self.adv_final)
         self.aux_final = nn.Sequential(*self.aux_final)
 
-    def forward(self, mask, edge, labels):
+    def forward(self, mask, edge):
         # Concate input
         x = torch.cat([mask, edge], dim=1)
         # 
         x = self.backbone(x)
         # 
         facticity = self.adv_final(x) # (batch, 1, )
-        bubble_type = self.aux_final(x) # (batch, types, )
-        facticity = facticity.view(facticity.size(0), facticity.size(1), -1).sum(-1).sigmoid()
-        bubble_type = bubble_type.view(bubble_type.size(0), bubble_type.size(1), -1).sum(-1).sigmoid()
-        # 
-        idx = torch.LongTensor(range(labels.size(0))).to(labels.device)
-        bubble_type = bubble_type[idx, labels] # (batch)
+        bubble_type = self.aux_final(x) # (batch, types, 1, 1)
+        facticity = facticity.view(facticity.size(0), facticity.size(1)).sigmoid()
+        bubble_type = bubble_type.view(bubble_type.size(0), bubble_type.size(1)).softmax(dim=-1)
         return facticity, bubble_type
 
 if __name__ == "__main__":

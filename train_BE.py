@@ -65,12 +65,12 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         pred_masks = preds["masks"]
         
         # Train discriminator
-        real_facticity, real_type = disctiminator(bimgs, eimgs, labels)
-        fake_facticity, fake_type = disctiminator(pred_edges.detach(), pred_masks.detach(), labels)
+        real_facticity, real_type = disctiminator(bimgs, eimgs)
+        fake_facticity, fake_type = disctiminator(pred_edges.detach(), pred_masks.detach())
 
-        loss_adv_real = F.binary_cross_entropy(real_facticity, valid) + compute_hinge_loss(real_type, "d_real")
-        loss_adv_fake = F.binary_cross_entropy(fake_facticity, fake) + compute_hinge_loss(fake_type, "d_fake")
-        loss_adv = (loss_adv_real + loss_adv_fake) * 0.5
+        loss_adv_real = F.binary_cross_entropy(real_facticity, valid)
+        loss_adv_fake = F.binary_cross_entropy(fake_facticity, fake) # + F.nll_loss(fake_type, labels)
+        loss_adv = (loss_adv_real + loss_adv_fake) * 0.5 + F.nll_loss(real_type, labels)
 
         disc_optim.zero_grad()
         loss_adv.backward()
@@ -80,11 +80,11 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         # preds = net(imgs)
         # pred_edges = preds["edges"]
         # pred_masks = preds["masks"]
-        g_facticity, g_type = disctiminator(pred_edges, pred_masks, labels)
+        g_facticity, g_type = disctiminator(pred_edges, pred_masks)
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, eimgs) + compute_dice_loss(pred_edges.sigmoid(), eimgs)
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, bimgs) + compute_dice_loss(pred_masks.sigmoid(), bimgs)
-        loss_gen = F.binary_cross_entropy(g_facticity, valid) + compute_hinge_loss(g_type, "g")
-        losses = loss_egde + loss_mask + loss_gen * 0.1
+        loss_gen = F.binary_cross_entropy(g_facticity, valid) + F.nll_loss(g_type, labels)
+        losses = loss_egde + loss_mask + loss_gen * 0.5
 
         optim.zero_grad()
         losses.backward()
