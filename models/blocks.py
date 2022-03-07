@@ -30,6 +30,22 @@ class Conv2d(nn.Module):
     def forward(self, input):
         return self.conv(input)
 
+class Linear(nn.Module):
+    def __init__(self, in_channel, out_channel, bias=True, activate='relu'):
+        super(Linear, self).__init__()
+        fc = [nn.Linear(in_channel, out_channel, bias=bias)]
+        if activate is not None:
+            if activate == 'relu':
+                fc.append(nn.ReLU())
+            elif activate == 'lrelu':
+                fc.append(nn.LeakyReLU(0.2))
+            elif activate == 'tanh':
+                fc.append(nn.Tanh())
+        self.fc = nn.Sequential(*fc)
+
+    def forward(self, x):
+        return self.fc(x)
+
 class SCSEBlock(nn.Module):
     def __init__(self, in_channels, reduction=16):
         super(SCSEBlock, self).__init__()
@@ -82,15 +98,6 @@ class ResidualBlock(nn.Module):
         self.conv1 = Conv2d(in_channel, in_channel*2, kernel_size=1, bn=True, activate='lrelu')
         self.conv2 = Conv2d(in_channel*2, in_channel*2, kernel_size=3, bn=True, activate='lrelu')
         self.conv3 = Conv2d(in_channel*2, in_channel, kernel_size=1, bn=True, activate='lrelu')
-        #parameter initialization
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_uniform_(m.weight, mode="fan_in", nonlinearity="relu")
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.normal_(m.weight, 1.0, 0.02)
-                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         residual = self.conv1(x)
@@ -110,6 +117,21 @@ class AddCoords(nn.Module):
         new_coord_i = torch.arange(0, w, dtype=dtype, device=device).reshape(1, 1, 1, -1).repeat(b, 1, h, 1)
         new_coord_j = torch.arange(0, h, dtype=dtype, device=device).reshape(1, 1, -1, 1).repeat(b, 1, 1, w)
         x = torch.cat([x, new_coord_i, new_coord_j], dim=1)
+        return x
+
+class Down(nn.Module):
+    def __init__(self, in_channel, out_channel, kernel_size, if_add_coord=False):
+        super().__init__()
+        self.if_add_coord = if_add_coord
+        coord_channel = 2 if if_add_coord else 0
+        self.conv = Conv2d(in_channel + coord_channel, out_channel, kernel_size, stride=2)
+        if if_add_coord:
+            self.add_coord = AddCoords()
+    
+    def forward(self, x):
+        if self.if_add_coord:
+            x = self.add_coord(x)
+        x = self.conv(x)
         return x
 
 class Up(nn.Module):
