@@ -14,11 +14,17 @@ class FeatureNet(nn.Module):
     def __init__(self):
         super(FeatureNet, self).__init__()
         self.backbone = resnet_fpn_backbone('resnet50', True)
-        out_channels = self.backbone.out_channels
-        self.conv1 = Conv2d(out_channels, out_channels//2, 3, stride=1)
-        self.conv2 = Conv2d(out_channels//2, out_channels//4, 3, stride=1)
-        self.conv3 = Conv2d(out_channels//4, out_channels//8, 3, stride=1)
-        self.out_channels = out_channels//8
+        # 
+        self.aux_convs = []
+        target_out_channels = 32
+        in_channels = self.backbone.out_channels
+        repeat_num = int(np.log2(in_channels // target_out_channels))
+        for _ in range(repeat_num):
+            self.aux_convs.append(Conv2d(in_channels, in_channels// 2, 1, stride=1))
+            self.aux_convs.append(Conv2d(in_channels//2, in_channels//2, 3, stride=1))
+            in_channels = in_channels // 2
+        self.aux_convs = nn.Sequential(*self.aux_convs)
+        self.out_channels = target_out_channels
 
     def forward(self, x):
         # 0 : size / 4
@@ -27,9 +33,7 @@ class FeatureNet(nn.Module):
         # 3 : size / 32
         # pool : size / 64
         x = self.backbone(x)["0"]
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
+        x = self.aux_convs(x)
         return x
 
 class MaskNet(nn.Module):

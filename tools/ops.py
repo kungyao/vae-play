@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -77,4 +79,10 @@ def initialize_model(model):
         elif isinstance(m, nn.BatchNorm2d):
             nn.init.constant_(m.weight, 1)
             nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.Linear):
+            nn.init.kaiming_uniform_(m.weight, a=math.sqrt(5))
+            if m.bias is not None:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
+                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+                nn.init.uniform_(m.bias, -bound, bound)
 

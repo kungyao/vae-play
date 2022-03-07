@@ -116,6 +116,7 @@ if __name__ == "__main__":
     
     net = ComposeNet()
 
+    initialize_model(net.feature_net.aux_convs)
     initialize_model(net.mask_net)
     initialize_model(net.edge_net)
 

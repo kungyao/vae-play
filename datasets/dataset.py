@@ -107,9 +107,9 @@ class BTransform(object):
         self.if_rnadom_gen = if_rnadom_gen
         if if_rnadom_gen:
             # Fill with white
-            self.rd_rotation_fw = transforms.RandomRotation(45, fill=1.0)
+            self.rd_rotation_fw = transforms.RandomRotation(30, fill=1.0)
             # Fill with black
-            self.rd_rotation_fb = transforms.RandomRotation(45, fill=0.0)
+            self.rd_rotation_fb = transforms.RandomRotation(30, fill=0.0)
             self.rd_vertical = transforms.RandomVerticalFlip()
             self.rd_horizontal = transforms.RandomHorizontalFlip()
 
