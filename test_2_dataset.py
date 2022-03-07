@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from torch.utils.data import DataLoader
 
-from datasets .dataset import BCDataset, BEDataset
+from datasets .dataset import BCDataset, BEDataset, BEDatasetGAN
 from tools.utils import makedirs
 
 
@@ -120,8 +120,39 @@ def test_BEDataset():
             pad_value=1
         )
 
+def BEGAN_collate_fn(batch):
+    imgs, bimgs, eimgs, labels = zip(*batch)
+    imgs = torch.stack(imgs, dim=0)
+    bimgs = torch.stack(bimgs, dim=0)
+    eimgs = torch.stack(eimgs, dim=0)
+    labels = torch.as_tensor(labels, dtype=torch.int64)
+    return imgs, bimgs, eimgs, labels
+
+def tset_BEDatasetGAN():
+    data_loader = DataLoader(
+        BEDatasetGAN("D:/Manga/bubble-gen-label", (256, 256), if_test=True), 
+        batch_size=16, 
+        shuffle=False, 
+        num_workers=4, 
+        collate_fn=BEGAN_collate_fn, 
+        pin_memory=True)
+    
+    res_output = "./tests"
+    makedirs(res_output)
+
+    for i, (imgs, bimgs, eimgs, labels) in enumerate(data_loader):
+        b = imgs.size(0)
+        vutils.save_image(
+            torch.cat([imgs], dim=0), 
+            os.path.join(res_output, f"{i}.png"),
+            nrow=b, 
+            padding=2, 
+            pad_value=1
+        )
+
 if __name__ == "__main__":
     # test_BCDataset()
-    test_BEDataset()
+    # test_BEDataset()
+    tset_BEDatasetGAN()
     print()
 

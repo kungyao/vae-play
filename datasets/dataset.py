@@ -9,7 +9,7 @@ import numpy as np
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF 
 from rdp import rdp
-from PIL import Image
+from PIL import Image, ImageChops
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 
@@ -271,6 +271,46 @@ class BCDataset(Dataset):
         img, bimg, eimg, cnt, key_cnt = self.transform(img, bimg, eimg, self.contours[idx], self.key_contours[idx])
         return img, bimg, eimg, cnt, key_cnt
 
+# 
+class BEDatasetGAN(Dataset):
+    def __init__(self, data_path, img_size, if_test=False) -> None:
+        super().__init__()
+        self.imgs = []
+        self.masks = []
+        self.labels = []
+        self.transform = BTransform((img_size[1], img_size[0]), True)
 
+        self.if_test = if_test
+        for cls_name in os.listdir(data_path):
+            if cls_name not in ["1", "2", "3"]:
+                continue
+            
+            cls_folder = os.path.join(data_path, cls_name)
+            for patch in os.listdir(cls_folder):
+                if "layer" in patch or "mask" in patch or "edge" in patch :
+                    continue
+                name, ext = patch.split(".")[:2]
+                self.imgs.append(os.path.join(cls_folder, f"{name}.{ext}"))
+                self.labels.append(int(cls_name) - 1)
+                self.masks.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
+    
+    def __len__(self):
+        return len(self.imgs)
 
-
+    def __getitem__(self, idx):
+        # 
+        img = Image.open(self.imgs[idx], "r").convert("RGB")
+        # 
+        mask = Image.open(self.masks[idx], "r").convert("RGB")
+        mask = np.array(mask)
+        bg = np.where((mask[:,:,0]==255) & (mask[:,:,1]==255) & (mask[:,:,2]==255))
+        mask[bg] = (0, 0, 0)
+        # 
+        eimg = mask[:, :, 1]
+        bimg = mask[:, :, 0]
+        label = self.labels[idx]
+        #
+        img, bimg, eimg, _, _ = self.transform(img, bimg, eimg, [], [])
+        tmp_eimg = eimg.repeat(3, 1, 1)
+        img = torch.multiply(img, tmp_eimg) + (1 - tmp_eimg)
+        return img, bimg, eimg, label
