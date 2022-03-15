@@ -14,12 +14,11 @@ from tools.ops import *
 from tools.utils import makedirs
 
 def train_collate_fn(batch):
-    imgs, bimgs, eimgs, labels = zip(*batch)
+    imgs, bimgs, labels = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
-    eimgs = torch.stack(eimgs, dim=0)
     labels = torch.as_tensor(labels, dtype=torch.int64)
-    return imgs, bimgs, eimgs, labels
+    return imgs, bimgs, labels
 
 def save_test_batch(x_org, x_ref, x_rec, x_stl, result_path, result_name):
     b = x_org.size(0)
@@ -47,7 +46,8 @@ def train(args, epoch, iterations, nets, optims, train_loader):
     
     count = 0
     avg_loss = {
-        "loss_d_adv": 0,
+        "d_adv_real": 0,
+        "d_adv_fake": 0,
         "loss_g_adv": 0, 
         "loss_g_rec": 0, 
         "loss_c_stl": 0, 
@@ -56,26 +56,25 @@ def train(args, epoch, iterations, nets, optims, train_loader):
     train_iter = iter(train_loader)
     for i in trange(iterations):
         try:
-            imgs, bimgs, eimgs, labels = next(train_iter)
+            # imgs, bimgs, eimgs, labels = next(train_iter)
+            imgs, bimgs, labels = next(train_iter)
         except:
             train_iter = iter(train_loader)
-            imgs, bimgs, eimgs, labels = next(train_iter)
-
-        # b = imgs.size(0)
-        # imgs = imgs.cuda(args.gpu)
-        # bimgs = bimgs.cuda(args.gpu)
-        # eimgs = eimgs.cuda(args.gpu)
-        # labels = labels.cuda(args.gpu)
+            imgs, bimgs, labels = next(train_iter)
 
         # Prepare data
-        x_org = imgs.cuda(args.gpu)
+        # Bubble only mask
+        x_content_org = bimgs.cuda(args.gpu)
+        # Bubble only image
+        x_style_org = imgs.cuda(args.gpu)
         y_org = labels.cuda(args.gpu)
 
         # Prepare style data
-        x_ref_idx = torch.randperm(x_org.size(0))
+        x_ref_idx = torch.randperm(x_content_org.size(0))
         x_ref_idx = x_ref_idx.cuda(args.gpu)
-        x_ref = x_org.clone()
-        x_ref = x_ref[x_ref_idx]
+        # x_content_ref = x_content_org.clone()
+        x_style_ref = x_style_org.clone()
+        x_style_ref = x_style_ref[x_ref_idx]
         y_ref = y_org.clone()
         y_ref = y_ref[x_ref_idx]
 
@@ -83,16 +82,18 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         # D
         ###
         with torch.no_grad():
-            s_ref = E(x_ref)
-            x_fake = G(x_org, s_ref)
+            s_ref = E(x_style_ref)
+            x_fake = G(x_content_org, s_ref)
         
-        x_ref.requires_grad_()
-        d_real_logit = D(x_ref, y_ref)
-        d_fake_logit = D(x_fake, y_ref)
+        # x_ref.requires_grad_()
+        d_real_logit = D(x_style_ref, y_ref)
+        d_fake_logit = D(x_fake.detach(), y_ref)
 
-        d_adv_real = compute_hinge_loss(d_real_logit, 'd_real')
-        d_adv_fake = compute_hinge_loss(d_fake_logit, 'd_fake')
-        d_adv_loss = d_adv_real + d_adv_fake
+        # d_adv_real = compute_hinge_loss(d_real_logit, 'd_real')
+        # d_adv_fake = compute_hinge_loss(d_fake_logit, 'd_fake')
+        d_adv_real = F.cross_entropy(d_real_logit, y_ref)
+        d_adv_fake = F.cross_entropy(d_fake_logit, y_ref)
+        d_adv_loss = (d_adv_real + d_adv_fake) * 0.5
 
         d_opt.zero_grad()
         d_adv_loss.backward()
@@ -101,40 +102,44 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         ###
         # G
         ###
-        s_org = E(x_org)
-        s_ref = E(x_ref)
+        s_org = E(x_style_org)
+        s_ref = E(x_style_ref)
 
-        d1_org, d2_org, d3_org, d4_org, d5_org = G.encode(x_org)
-        # d1_stl, d2_stl, d3_stl, d4_stl, d5_stl = G.encode(x_stl)
-        x_rec = G.decode(d1_org, d2_org, d3_org, d4_org, d5_org, s_org)
-        x_stl = G.decode(d1_org, d2_org, d3_org, d4_org, d5_org, s_ref)
+        c0_org, d1_org, d2_org, d3_org, d4_org = G.encode(x_content_org)
+        # d1_stl, d2_stl, d3_stl, d4_stl = G.encode(x_stl)
+        x_rec = G.decode(c0_org, d1_org, d2_org, d3_org, d4_org, s_org)
+        x_stl = G.decode(c0_org, d1_org, d2_org, d3_org, d4_org, s_ref)
 
         g_rec_logit = D(x_rec, y_org)
         g_stl_logit = D(x_stl, y_ref)
 
-        g_adv_rec = compute_hinge_loss(g_rec_logit, 'g')
-        g_adv_stl = compute_hinge_loss(g_stl_logit, 'g')
-        g_adv_loss = g_adv_rec + g_adv_stl
+        # # g_adv_rec = compute_hinge_loss(g_rec_logit, 'g')
+        # # g_adv_stl = compute_hinge_loss(g_stl_logit, 'g')
+        g_adv_rec = F.cross_entropy(g_rec_logit, y_org)
+        g_adv_stl = F.cross_entropy(g_stl_logit, y_ref)
+        g_adv_loss = (g_adv_rec + g_adv_stl) * 0.5
 
-        g_rec_loss = F.mse_loss(x_rec, x_org)
+        g_rec_loss = F.l1_loss(x_rec, x_style_org) * 0.5 + compute_dice_loss(1 - x_rec.sigmoid(), 1 - x_style_org)
 
-        _, _, _, _, d5_stl = G.encode(x_stl)
-        g_c_stl_loss = F.mse_loss(d5_stl, d5_org)
+        # _, _, _, d4_stl = G.encode(x_stl)
+        # g_c_stl_loss = F.l1_loss(d4_stl, d4_org)
 
-        g_loss = g_adv_loss + g_rec_loss * 0.1 + g_c_stl_loss * 0.1
+        # g_loss = g_adv_loss + g_rec_loss + g_c_stl_loss * 0.1
+        g_loss = g_adv_loss + g_rec_loss
 
         g_opt.zero_grad()
         e_opt.zero_grad()
         g_loss.backward()
-        g_opt.step()
         e_opt.step()
+        g_opt.step()
         
         # 
         next_count = count + imgs.size(0)
-        avg_loss["loss_d_adv"] = (avg_loss["loss_d_adv"] * count + d_adv_loss.item()) / next_count
+        avg_loss["d_adv_real"] = (avg_loss["d_adv_real"] * count + d_adv_real.item()) / next_count
+        avg_loss["d_adv_fake"] = (avg_loss["d_adv_fake"] * count + d_adv_fake.item()) / next_count
         avg_loss["loss_g_adv"] = (avg_loss["loss_g_adv"] * count + g_adv_loss.item()) / next_count
         avg_loss["loss_g_rec"] = (avg_loss["loss_g_rec"] * count + g_rec_loss.item()) / next_count
-        avg_loss["loss_c_stl"] = (avg_loss["loss_c_stl"] * count + g_c_stl_loss.item()) / next_count
+        # avg_loss["loss_c_stl"] = (avg_loss["loss_c_stl"] * count + g_c_stl_loss.item()) / next_count
         count = next_count
 
         if (i+1) % args.viz_freq == 0:
@@ -143,7 +148,12 @@ def train(args, epoch, iterations, nets, optims, train_loader):
             for key in avg_loss:
                 res_str += f"{key}: {round(avg_loss[key], 6)}; "
             print(res_str)
-            save_test_batch(x_org, x_ref, x_rec, x_stl, args.res_output, f"{epoch}_{i+1}")
+            with torch.no_grad():
+                s_org = E(x_style_org)
+                s_ref = E(x_style_ref)
+                x_rec = G(x_content_org, s_org)
+                x_stl = G(x_content_org, s_ref)
+                save_test_batch(x_style_org, x_style_ref, x_rec.sigmoid(), x_stl.sigmoid(), args.res_output, f"{epoch}_{i+1}")
     return
 
 if __name__ == "__main__":
@@ -197,9 +207,9 @@ if __name__ == "__main__":
     nets["D"] = discriminator
 
     optims = {}
-    optims["G"] = torch.optim.RMSprop(generator.parameters(), lr=args.lr, weight_decay=0.0001)
+    optims["G"] = torch.optim.Adam(generator.parameters(), lr=args.lr)
     optims["E"] = torch.optim.Adam(style_encoder.parameters(), lr=args.lr)
-    optims["D"] = torch.optim.RMSprop(discriminator.parameters(), lr=args.lr, weight_decay=0.0001)
+    optims["D"] = torch.optim.Adam(discriminator.parameters(), lr=args.lr)
 
     for name, net in nets.items():
         nets[name] = net.cuda(args.gpu)
@@ -211,7 +221,8 @@ if __name__ == "__main__":
         shuffle=True, 
         num_workers=args.workers, 
         collate_fn=train_collate_fn, 
-        pin_memory=True)
+        pin_memory=True,
+        drop_last=True)
 
     for epoch in range(args.epochs):
         train(args, epoch, args.iterations, nets, optims, dloader)
