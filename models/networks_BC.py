@@ -97,24 +97,24 @@ class MaskNet(nn.Module):
         super(MaskNet, self).__init__()
         # 
         self.conv1 = nn.Sequential(
-            Conv2d(in_channel, in_channel // 2, 3, stride=1), 
-            Conv2d(in_channel // 2, in_channel // 4, 3, stride=1),
-            Conv2d(in_channel // 4, in_channel // 8, 3, stride=1)
+            Conv2d(in_channel, in_channel // 2, 3, stride=1, bn="batch"), 
+            Conv2d(in_channel // 2, in_channel // 4, 3, stride=1, bn="batch"),
+            Conv2d(in_channel // 4, in_channel // 8, 3, stride=1, bn="batch")
         )
         in_channel = in_channel // 8
         # self.attn1 = SCSEBlock(in_channel, reduction=4)
         # 
         self.conv2 = nn.Sequential(
-            Conv2d(in_channel, in_channel // 2, 3, stride=1), 
-            Conv2d(in_channel // 2, in_channel // 4, 3, stride=1)
+            Conv2d(in_channel, in_channel // 2, 3, stride=1, bn="batch"), 
+            Conv2d(in_channel // 2, in_channel // 4, 3, stride=1, bn="batch")
         )
         in_channel = in_channel // 4
         # self.attn2 = SCSEBlock(in_channel, reduction=4)
         # 
         self.out_channels = 1
         self.predictor = nn.Sequential(
-            Conv2d(in_channel, in_channel // 2, 3, stride=1, bn=False, activate=None), 
-            Conv2d(in_channel // 2, self.out_channels, 3, stride=1, bn=False, activate=None)
+            Conv2d(in_channel, in_channel // 2, 3, stride=1, bn=None, activate=None), 
+            Conv2d(in_channel // 2, self.out_channels, 3, stride=1, bn=None, activate=None)
         )
 
     def forward(self, x):
@@ -132,13 +132,13 @@ class EdgeNet(nn.Module):
     def __init__(self, in_channel):
         super(EdgeNet, self).__init__()
         self.conv1 = nn.Sequential(
-            Conv2d(in_channel, in_channel, 3, stride=1, bn=False), 
-            Conv2d(in_channel, in_channel, 3, stride=1, bn=False),
-            Conv2d(in_channel, in_channel, 3, stride=1, bn=False)
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=None), 
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=None),
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=None)
         )
         self.predictor = nn.Sequential(
-            Conv2d(in_channel, in_channel, 3, stride=1, bn=False, activate=None), 
-            Conv2d(in_channel, in_channel, 3, stride=1, bn=False, activate=None)
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=None, activate=None), 
+            Conv2d(in_channel, in_channel, 3, stride=1, bn=None, activate=None)
         )
 
     def forward(self, x):

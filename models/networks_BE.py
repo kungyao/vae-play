@@ -20,8 +20,8 @@ class FeatureNet(nn.Module):
         in_channels = self.backbone.out_channels
         repeat_num = int(np.log2(in_channels // target_out_channels))
         for _ in range(repeat_num):
-            self.aux_convs.append(Conv2d(in_channels, in_channels// 2, 1, stride=1))
-            self.aux_convs.append(Conv2d(in_channels//2, in_channels//2, 3, stride=1))
+            self.aux_convs.append(Conv2d(in_channels, in_channels// 2, 1, stride=1, bn="batch"))
+            self.aux_convs.append(Conv2d(in_channels//2, in_channels//2, 3, stride=1, bn="batch"))
             in_channels = in_channels // 2
         self.aux_convs = nn.Sequential(*self.aux_convs)
         self.out_channels = target_out_channels
@@ -46,9 +46,9 @@ class MaskNet(nn.Module):
         # 
         self.out_channels = 1
         self.predictor = nn.Sequential(
-            Conv2d(in_channel // 8, in_channel // 4, 3, stride=1, bn=False, activate=None), 
-            Conv2d(in_channel // 4, in_channel // 8, 3, stride=1, bn=False, activate=None), 
-            Conv2d(in_channel // 8, self.out_channels, 3, stride=1, bn=False, activate=None)
+            Conv2d(in_channel // 8, in_channel // 4, 3, stride=1, bn=None, activate=None), 
+            Conv2d(in_channel // 4, in_channel // 8, 3, stride=1, bn=None, activate=None), 
+            Conv2d(in_channel // 8, self.out_channels, 3, stride=1, bn=None, activate=None)
         )
 
     def forward(self, x):

@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Conv2d(nn.Module):
-    def __init__(self, in_channel, out_channel, kernel_size, stride=1, bn=True, activate='relu'):
+    def __init__(self, in_channel, out_channel, kernel_size, stride=1, bn=None, activate='relu'):
         super(Conv2d, self).__init__()
-        bias = not bn
+        bias = bn is None
         conv = [
             nn.Conv2d(
                 in_channel,
@@ -16,8 +16,10 @@ class Conv2d(nn.Module):
                 bias=bias,
             )
         ]
-        if bn:
+        if bn == "batch":
             conv.append(nn.BatchNorm2d(out_channel))
+        elif bn == "instance":
+            conv.append(nn.InstanceNorm2d(out_channel))
         if activate is not None:
             if activate == 'relu':
                 conv.append(nn.ReLU())
@@ -64,9 +66,9 @@ class SCSEBlock(nn.Module):
 class SelfAttentionBlock(nn.Module):
     def __init__(self, in_channel):
         super(SelfAttentionBlock, self).__init__()
-        self.q = Conv2d(in_channel, in_channel//8, 1, bn=False)
-        self.k = Conv2d(in_channel, in_channel//8, 1, bn=False)
-        self.v = Conv2d(in_channel, in_channel, 1, bn=False)
+        self.q = Conv2d(in_channel, in_channel//8, 1)
+        self.k = Conv2d(in_channel, in_channel//8, 1)
+        self.v = Conv2d(in_channel, in_channel, 1)
         self.gamma = nn.Parameter(torch.zeros(1))
         self.softmax  = nn.Softmax(dim=-1)
     
@@ -90,21 +92,6 @@ class SelfAttentionBlock(nn.Module):
         
         out = self.gamma*out + x
         return out #, attention
-
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channel):
-        super(ResidualBlock, self).__init__()
-        self.res_conv = Conv2d(in_channel, in_channel, kernel_size=1, bn=True, activate='lrelu')
-        self.conv1 = Conv2d(in_channel, in_channel*2, kernel_size=1, bn=True, activate='lrelu')
-        self.conv2 = Conv2d(in_channel*2, in_channel*2, kernel_size=3, bn=True, activate='lrelu')
-        self.conv3 = Conv2d(in_channel*2, in_channel, kernel_size=1, bn=True, activate='lrelu')
-
-    def forward(self, x):
-        residual = self.conv1(x)
-        residual = self.conv2(residual)
-        residual = self.conv3(residual)
-        out = self.res_conv(x) + residual
-        return out
 
 class AddCoords(nn.Module):
     def __init__(self):
@@ -140,9 +127,9 @@ class Up(nn.Module):
         self.if_add_coord = if_add_coord
         coord_channel = 2 if if_add_coord else 0
         self.conv = nn.Sequential(
-            Conv2d(in_channel + coord_channel, in_channel, 3, stride=1), 
-            Conv2d(in_channel, out_channel, 3, stride=1), 
-            Conv2d(out_channel, out_channel, 3, stride=1)
+            Conv2d(in_channel + coord_channel, in_channel, 3, stride=1, bn="batch"), 
+            Conv2d(in_channel, out_channel, 3, stride=1, bn="batch"), 
+            Conv2d(out_channel, out_channel, 3, stride=1, bn="batch")
         )
         if if_add_coord:
             self.add_coord = AddCoords()
