@@ -16,15 +16,16 @@ class Conv2d(nn.Module):
                 bias=bias,
             )
         ]
-        if bn == "batch":
-            conv.append(nn.BatchNorm2d(out_channel))
-        elif bn == "instance":
-            conv.append(nn.InstanceNorm2d(out_channel))
+        if bn is not None:
+            if bn == "batch":
+                conv.append(nn.BatchNorm2d(out_channel))
+            elif bn == "instance":
+                conv.append(nn.InstanceNorm2d(out_channel))
         if activate is not None:
             if activate == 'relu':
                 conv.append(nn.ReLU())
             elif activate == 'lrelu':
-                conv.append(nn.LeakyReLU(0.2))
+                conv.append(nn.LeakyReLU(0.02))
             elif activate == 'tanh':
                 conv.append(nn.Tanh())
         self.conv = nn.Sequential(*conv)

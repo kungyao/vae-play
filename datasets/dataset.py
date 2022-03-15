@@ -132,7 +132,7 @@ class BTransform(object):
         # Set random seed for doing same operation for input data.
         seed = random.randint(0, 2147483647)
         # Do
-        img = self.do_operation(img, seed, True)
+        img = self.do_operation(img, seed, False)
         bimg = self.do_operation(bimg, seed, False)
         eimg = self.do_operation(eimg, seed, False)
 
@@ -282,16 +282,22 @@ class BEDatasetGAN(Dataset):
 
         self.if_test = if_test
         for cls_name in os.listdir(data_path):
-            if cls_name not in ["1", "2", "3"]:
-                continue
-            
+            if cls_name not in ["2", "3"]:
+                 continue
+            cls_label = int(cls_name)
+            if cls_label == 1 or cls_label == 2:
+                cls_label = 1
+            elif cls_label == 3:
+                cls_label = 2
             cls_folder = os.path.join(data_path, cls_name)
             for patch in os.listdir(cls_folder):
                 if "layer" in patch or "mask" in patch or "edge" in patch or "bubble" in patch:
                     continue
                 name, ext = patch.split(".")[:2]
-                self.imgs.append(os.path.join(cls_folder, f"{name}_bubble.{ext}"))
-                self.labels.append(int(cls_name) - 1)
+                # self.imgs.append(os.path.join(cls_folder, f"{name}_bubble.{ext}"))
+                self.imgs.append(os.path.join(cls_folder, f"{name}_mask2.{ext}"))
+
+                self.labels.append(cls_label - 1)
                 self.masks.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
     
     def __len__(self):

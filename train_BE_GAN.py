@@ -31,7 +31,7 @@ def save_test_batch(x_org, x_ref, x_rec, x_stl, result_path, result_name):
         pad_value=1
     )
 
-def train(args, epoch, iterations, nets, optims, train_loader):
+def train_style_transfer(args, epoch, iterations, nets, optims, train_loader):
     G = nets["G"]
     E = nets["E"]
     D = nets["D"]
@@ -62,6 +62,7 @@ def train(args, epoch, iterations, nets, optims, train_loader):
             train_iter = iter(train_loader)
             imgs, bimgs, labels = next(train_iter)
 
+        b = imgs.size(0)
         # Prepare data
         # Bubble only mask
         x_content_org = bimgs.cuda(args.gpu)
@@ -85,14 +86,11 @@ def train(args, epoch, iterations, nets, optims, train_loader):
             s_ref = E(x_style_ref)
             x_fake = G(x_content_org, s_ref)
         
-        # x_ref.requires_grad_()
-        d_real_logit = D(x_style_ref, y_ref)
-        d_fake_logit = D(x_fake.detach(), y_ref)
+        d_real_valid, d_real_type = D(x_style_ref, y_ref)
+        d_fake_valid, d_fake_type = D(x_fake.detach(), y_ref)
 
-        # d_adv_real = compute_hinge_loss(d_real_logit, 'd_real')
-        # d_adv_fake = compute_hinge_loss(d_fake_logit, 'd_fake')
-        d_adv_real = F.cross_entropy(d_real_logit, y_ref)
-        d_adv_fake = F.cross_entropy(d_fake_logit, y_ref)
+        d_adv_real = F.binary_cross_entropy(d_real_valid, torch.ones((b, 1), device=d_real_valid.device)) + F.cross_entropy(d_real_type, y_ref)
+        d_adv_fake = F.binary_cross_entropy(d_fake_valid, torch.zeros((b, 1), device=d_fake_valid.device)) + F.cross_entropy(d_fake_type, y_ref)
         d_adv_loss = (d_adv_real + d_adv_fake) * 0.5
 
         d_opt.zero_grad()
@@ -110,21 +108,15 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         x_rec = G.decode(c0_org, d1_org, d2_org, d3_org, d4_org, s_org)
         x_stl = G.decode(c0_org, d1_org, d2_org, d3_org, d4_org, s_ref)
 
-        g_rec_logit = D(x_rec, y_org)
-        g_stl_logit = D(x_stl, y_ref)
+        g_rec_valid, g_rec_type = D(x_rec, y_org)
+        g_stl_valid, g_stl_type = D(x_stl, y_ref)
 
-        # # g_adv_rec = compute_hinge_loss(g_rec_logit, 'g')
-        # # g_adv_stl = compute_hinge_loss(g_stl_logit, 'g')
-        g_adv_rec = F.cross_entropy(g_rec_logit, y_org)
-        g_adv_stl = F.cross_entropy(g_stl_logit, y_ref)
+        g_adv_rec = F.binary_cross_entropy(g_rec_valid, torch.ones((b, 1), device=g_rec_valid.device)) + F.cross_entropy(g_rec_type, y_org)
+        g_adv_stl = F.binary_cross_entropy(g_stl_valid, torch.ones((b, 1), device=g_stl_valid.device)) + F.cross_entropy(g_stl_type, y_ref)
         g_adv_loss = (g_adv_rec + g_adv_stl) * 0.5
 
-        g_rec_loss = F.l1_loss(x_rec, x_style_org) * 0.5 + compute_dice_loss(1 - x_rec.sigmoid(), 1 - x_style_org)
+        g_rec_loss = F.l1_loss(x_rec, x_style_org) + compute_dice_loss(1 - x_rec.sigmoid(), 1 - x_style_org)
 
-        # _, _, _, d4_stl = G.encode(x_stl)
-        # g_c_stl_loss = F.l1_loss(d4_stl, d4_org)
-
-        # g_loss = g_adv_loss + g_rec_loss + g_c_stl_loss * 0.1
         g_loss = g_adv_loss + g_rec_loss
 
         g_opt.zero_grad()
@@ -153,7 +145,98 @@ def train(args, epoch, iterations, nets, optims, train_loader):
                 s_ref = E(x_style_ref)
                 x_rec = G(x_content_org, s_org)
                 x_stl = G(x_content_org, s_ref)
-                save_test_batch(x_style_org, x_style_ref, x_rec.sigmoid(), x_stl.sigmoid(), args.res_output, f"{epoch}_{i+1}")
+                save_test_batch(x_style_org, x_style_ref, x_rec, x_stl, args.res_output, f"{epoch}_{i+1}")
+    return
+
+def train_random_gan(args, epoch, iterations, nets, optims, train_loader):
+    G = nets["G"]
+    D = nets["D"]
+
+    g_opt = optims["G"]
+    d_opt = optims["D"]
+
+    G.train()
+    D.train()
+    
+    count = 0
+    avg_loss = {
+        "d_real_loss": 0,
+        "d_fake_loss": 0,
+        "g_d_loss": 0, 
+        "g_rec_loss": 0
+    }
+
+    train_iter = iter(train_loader)
+    for i in trange(iterations):
+        try:
+            # imgs, bimgs, eimgs, labels = next(train_iter)
+            imgs, bimgs, labels = next(train_iter)
+        except:
+            train_iter = iter(train_loader)
+            imgs, bimgs, labels = next(train_iter)
+
+        b = imgs.size(0)
+        # Prepare data
+        x_target = imgs.cuda(args.gpu)
+        x_content = bimgs.cuda(args.gpu)
+        y_org = labels.cuda(args.gpu)
+
+        ###
+        # D
+        ###
+        fake_z = torch.FloatTensor(np.random.normal(0, 1, (b, args.z_dim))).cuda(args.gpu)
+        fake_label = torch.LongTensor(np.random.randint(0, args.num_of_classes, b)).cuda(args.gpu)
+        fake_z[:, 0] = fake_label
+        
+        with torch.no_grad():
+            fake_gen_imgs = G(x_content, fake_z, fake_label)
+        
+        d_real_valid, d_real_type = D(x_target, x_content, y_org)
+        d_fake_valid, d_fake_type = D(fake_gen_imgs, x_content, fake_label)
+        
+        d_real_loss = F.binary_cross_entropy(d_real_valid, torch.ones((b, 1), device=d_real_valid.device)) + F.cross_entropy(d_real_type, y_org)
+        d_fake_loss = F.binary_cross_entropy(d_fake_valid, torch.zeros((b, 1), device=d_fake_valid.device)) + F.cross_entropy(d_fake_type, fake_label)
+        d_adv_loss = (d_real_loss + d_fake_loss) * 0.5
+
+        d_opt.zero_grad()
+        d_adv_loss.backward()
+        d_opt.step()
+
+        ###
+        # G
+        ###
+        # d1_stl, d2_stl, d3_stl, d4_stl = G.encode(x_stl)
+        z = torch.FloatTensor(np.random.normal(0, 1, (b, args.z_dim))).cuda(args.gpu)
+        z[:, 0] = y_org
+
+        x_rec = G(x_content, z, y_org)
+        d_rec_valid, d_rec_type = D(x_rec, x_content, y_org)
+
+        g_d_loss = F.binary_cross_entropy(d_rec_valid, torch.ones((b, 1), device=d_real_valid.device)) + F.cross_entropy(d_rec_type, y_org)
+        g_rec_loss = F.l1_loss(x_rec, x_target)
+
+        g_loss = g_d_loss + g_rec_loss
+
+        g_opt.zero_grad()
+        g_loss.backward()
+        g_opt.step()
+        
+        # 
+        next_count = count + imgs.size(0)
+        avg_loss["d_real_loss"] = (avg_loss["d_real_loss"] * count + d_real_loss.item()) / next_count
+        avg_loss["d_fake_loss"] = (avg_loss["d_fake_loss"] * count + d_fake_loss.item()) / next_count
+        avg_loss["g_d_loss"] = (avg_loss["g_d_loss"] * count + g_d_loss.item()) / next_count
+        avg_loss["g_rec_loss"] = (avg_loss["g_rec_loss"] * count + g_rec_loss.item()) / next_count
+        count = next_count
+
+        if (i+1) % args.viz_freq == 0:
+            print("")
+            res_str = ""
+            for key in avg_loss:
+                res_str += f"{key}: {round(avg_loss[key], 6)}; "
+            print(res_str)
+            with torch.no_grad():
+                save_test_batch(x_content, x_target, x_rec.detach(), fake_gen_imgs.detach(), args.res_output, f"{epoch}_{i+1}")
     return
 
 if __name__ == "__main__":
@@ -189,26 +272,29 @@ if __name__ == "__main__":
         record_txt.write('{:35}{:20}\n'.format(arg, str(getattr(args, arg))))
     record_txt.close()
     
-    generator = Generator(args.z_dim)
-    style_encoder = StyleEncoder(args.z_dim, args.img_size)
-    discriminator = Discriminator(args.img_size, 3)
+    args.num_of_classes = 2
+
+    generator = Generator(args.img_size, args.z_dim)
+    # style_encoder = StyleEncoder(args.z_dim, args.img_size)
+    # Solid edge and strange edge
+    discriminator = Discriminator(args.img_size, args.num_of_classes)
 
     initialize_model(generator)
-    initialize_model(style_encoder)
+    # initialize_model(style_encoder)
     initialize_model(discriminator)
 
     generator.cuda(args.gpu)
-    style_encoder.cuda(args.gpu)
+    # style_encoder.cuda(args.gpu)
     discriminator.cuda(args.gpu)
 
     nets = {}
     nets["G"] = generator
-    nets["E"] = style_encoder
+    # nets["E"] = style_encoder
     nets["D"] = discriminator
 
     optims = {}
     optims["G"] = torch.optim.Adam(generator.parameters(), lr=args.lr)
-    optims["E"] = torch.optim.Adam(style_encoder.parameters(), lr=args.lr)
+    # optims["E"] = torch.optim.Adam(style_encoder.parameters(), lr=args.lr)
     optims["D"] = torch.optim.Adam(discriminator.parameters(), lr=args.lr)
 
     for name, net in nets.items():
@@ -221,11 +307,10 @@ if __name__ == "__main__":
         shuffle=True, 
         num_workers=args.workers, 
         collate_fn=train_collate_fn, 
-        pin_memory=True,
-        drop_last=True)
+        pin_memory=True)
 
     for epoch in range(args.epochs):
-        train(args, epoch, args.iterations, nets, optims, dloader)
+        train_random_gan(args, epoch, args.iterations, nets, optims, dloader)
         torch.save(
             {
                 "networks": nets, 
