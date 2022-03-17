@@ -24,17 +24,23 @@ class StyleEncoder(nn.Module):
         self.convs.append(Conv2d(out_dim, out_dim, 3, stride=2))
         self.convs = nn.Sequential(*self.convs)
         
-        fc_levels = 3
-        self.fcs = [Linear(out_dim, z_dim, activate=None)]
-        for _ in range(fc_levels-1):
-            self.fcs.append(Linear(z_dim, z_dim, activate=None))
-        self.fcs = nn.Sequential(*self.fcs)
+        # fc_levels = 3
+        # self.fcs = [Linear(out_dim, z_dim, activate=None)]
+        # for _ in range(fc_levels-1):
+        #     self.fcs.append(Linear(z_dim, z_dim, activate=None))
+        # self.fcs = nn.Sequential(*self.fcs)
+
+        self.fc_mu = Linear(out_dim, z_dim, activate=None)
+        self.fc_logvar = Linear(out_dim, z_dim, activate=None)
 
     def forward(self, x):
         x = self.convs(x)
         x = x.reshape(x.size(0), -1)
-        x = self.fcs(x)
-        return x
+        mu = self.fc_mu(x)
+        logvar = self.fc_logvar(x)
+        return mu, logvar
+        # x = self.fcs(x)
+        # return x
 
 class StyleUp(nn.Module):
     def __init__(self, in_channel, out_channel):
@@ -107,8 +113,7 @@ class Generator(nn.Module):
         # self.skip4 = Conv2d(32, 32, 3, 1, bn="instance")
 
         self.final = nn.Sequential(
-            nn.ConvTranspose2d(64, 32, 4, 2, 1),
-            nn.InstanceNorm2d(32), 
+            nn.ConvTranspose2d(64, 32, 4, 2, 1), 
             Conv2d(32, 32, 3, 1, bn=None), 
             Conv2d(32, 32, 3, 1, bn=None), 
             Conv2d(32, IMAGE_CHANNEL, 3, 1, bn=None, activate=None),
