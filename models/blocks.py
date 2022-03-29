@@ -18,7 +18,7 @@ class Conv2d(nn.Module):
         ]
         if bn is not None:
             if bn == "batch":
-                conv.append(nn.BatchNorm2d(out_channel))
+                conv.append(nn.BatchNorm2d(out_channel, track_running_stats=False))
             elif bn == "instance":
                 conv.append(nn.InstanceNorm2d(out_channel))
         if activate is not None:
@@ -95,8 +95,9 @@ class SelfAttentionBlock(nn.Module):
         return out #, attention
 
 class AddCoords(nn.Module):
-    def __init__(self):
+    def __init__(self, if_normalize=False):
         super(AddCoords, self).__init__()
+        self.if_normalize = if_normalize
     
     def forward(self, x):
         dtype = x.dtype
@@ -104,6 +105,9 @@ class AddCoords(nn.Module):
         b, c, h, w = x.shape
         new_coord_i = torch.arange(0, w, dtype=dtype, device=device).reshape(1, 1, 1, -1).repeat(b, 1, h, 1)
         new_coord_j = torch.arange(0, h, dtype=dtype, device=device).reshape(1, 1, -1, 1).repeat(b, 1, 1, w)
+        if self.if_normalize:
+            new_coord_i = (new_coord_i / w - 0.5) / 0.5
+            new_coord_j = (new_coord_j / h - 0.5) / 0.5
         x = torch.cat([x, new_coord_i, new_coord_j], dim=1)
         return x
 

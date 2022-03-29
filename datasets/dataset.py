@@ -1,9 +1,9 @@
 import os
 import sys
 import random
-from scipy.signal.signaltools import resample
 
 import cv2
+import json
 import torch
 import numpy as np
 import torch.nn.functional as F
@@ -323,3 +323,91 @@ class BEDatasetGAN(Dataset):
         # img = torch.multiply(img, tmp_eimg) + (1 - tmp_eimg)
         # img = torch.multiply(img, eimg) + (1 - eimg)
         return img, bimg, label
+
+# Bubble parameter
+class BPDataset(Dataset):
+    def __init__(self, data_path, img_size) -> None:
+        super().__init__()
+        self.imgs = []
+        self.layers = []
+        self.ellipses = []
+        self.infos = []
+        self.img_size = img_size
+        self.preprocess(data_path)
+
+    def preprocess(self, data_path):
+        img_path = os.path.join(data_path, "img")
+        layer_path = os.path.join(data_path, "layer")
+        ellipse_path = os.path.join(data_path, "ellipse")
+        annotation_path = os.path.join(data_path, "annotation")
+        for name in os.listdir(img_path):
+            name = name.split(".")[0]
+
+            self.imgs.append(os.path.join(img_path, f"{name}.png"))
+            self.layers.append(os.path.join(layer_path, f"{name}.png"))
+            self.ellipses.append(os.path.join(ellipse_path, f"{name}.png"))
+
+            with open(os.path.join(annotation_path, f"{name}.txt"), 'r') as fp:
+                annotation = json.load(fp)
+            data = {
+                "center_x": annotation["center_x"], 
+                "center_y": annotation["center_y"], 
+                "radius_x": annotation["radius_x"], 
+                "radius_y": annotation["radius_y"], 
+                "step": annotation["step"], 
+                "image_size": annotation["image_size"], 
+            }
+            samples = []
+            for sample in annotation["samples"]:
+                # x, y, nx, ny, length
+                samples.append(sample)
+            data["samples"] = samples
+            self.infos.append(data)
+
+    def __len__(self):
+        return len(self.imgs)
+
+    def __getitem__(self, idx):
+        image_mode = "RGB" # "L"
+        img = Image.open(self.imgs[idx], "r").convert(image_mode)
+        # scale = self.img_size / img.height
+        scale = 1 / img.height
+        img = img.resize((self.img_size, self.img_size)) # , resample=Image.NEAREST
+
+        mask = Image.open(self.layers[idx], "r").convert("RGB")
+        mask = mask.resize((self.img_size, self.img_size), resample=Image.NEAREST) # 
+        mask = np.array(mask)
+        bg = np.where((mask[:,:,0]==255) & (mask[:,:,1]==255) & (mask[:,:,2]==255))
+        mask[bg] = (0, 0, 0)
+        mask = mask[:, :, 0]
+
+        ellipse = Image.open(self.ellipses[idx], "r").convert(image_mode)
+        ellipse = ellipse.resize((self.img_size, self.img_size)) # , resample=Image.NEAREST
+        data = self.infos[idx]
+        target = {}
+        phase1 = np.array([
+            (data["center_x"] * scale - 0.5) / 0.5, 
+            (data["center_y"] * scale - 0.5) / 0.5, 
+            # data["center_x"] * scale, 
+            # data["center_y"] * scale, 
+            data["radius_x"] * scale, 
+            data["radius_y"] * scale, 
+            data["step"]
+        ])
+        phase2 = np.array(data["samples"])
+        # phase2[:, 0] = phase2[:, 0]
+        phase2[:, 1] = (phase2[:, 1] * scale - 0.5) / 0.5
+        phase2[:, 2] = (phase2[:, 2] * scale - 0.5) / 0.5
+        # phase2[:, 1] = phase2[:, 1] * scale
+        # phase2[:, 2] = phase2[:, 2] * scale
+        # phase2[:, 3] = phase2[:, 3]
+        # phase2[:, 4] = phase2[:, 4]
+        phase2[:, 5] = phase2[:, 5] * scale
+        # phase2[:, 6] = phase2[:, 6]
+        # 
+        img = TF.to_tensor(img)
+        bmask = TF.to_tensor(mask)
+        ellipse = TF.to_tensor(ellipse)
+        target["phase1"] = torch.FloatTensor(phase1)
+        target["phase2"] = torch.FloatTensor(phase2)
+        return img, bmask, ellipse, target

@@ -1,8 +1,11 @@
 import math
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from tools.utils import angle_between
 
 def compute_dice_loss(inputs, targets, smooth = 1.):
     nums = inputs.size(0)
@@ -60,6 +63,74 @@ def compute_pt_regression_loss(predict_contours, predict_regressions, target_con
     losses = torch.mean(torch.stack(losses))
     return losses
 
+def compute_ellipse_param_loss(preds, gt_targets):
+    gt_targets = gt_targets.to(preds.device)
+    loss = F.mse_loss(preds, gt_targets)
+    # print(preds, gt_targets)
+    return loss
+
+def compute_ellipse_pt_loss(preds, gt_targets):
+    pred_triggers = preds["if_triggers"]
+    # offset_x, offset_y, theta, length
+    pred_line_params = preds["line_params"]
+    # Known by predicted ellipse params
+    pred_sample_size = preds["sample_infos"]["size"]
+    # px, py, dpx, dpy, d
+    pred_sample_sample = preds["sample_infos"]["sample"]
+
+    # Collect matches
+    loss_target_trig = []
+    loss_target_param = []
+    for i in range(len(gt_targets)):
+        target = gt_targets[i]
+        # p_triggers = pred_triggers[i]
+        # p_line_params = pred_line_params[i]
+        p_sample_sample = pred_sample_sample[i]
+        p_sample_dense = p_sample_sample[:, 4].to(dtype=torch.long)
+
+        ts = target[p_sample_dense]
+        new_target_trig = ts[:, 0]
+        new_target_param = torch.stack([
+            ts[:, 1] - p_sample_sample[:, 0], 
+            ts[:, 2] - p_sample_sample[:, 1], 
+            torch.arccos(torch.clip(ts[:, 3] * p_sample_sample[:, 2] + ts[:, 4] * p_sample_sample[:, 3], -1.0, 1.0)), 
+            ts[:, 5]
+        ], dim=-1)
+
+        # # trigger, offset_x, offset_y, theta, length
+        # new_target_trig = []
+        # new_target_param = []
+        # for j in range(len(p_sample_dense)):
+        #     # trigger, px, py, dpx, dpy, length, d
+        #     t = target[int(p_sample_dense[j])]
+        #     p_pt_x = p_sample_sample[j][0]
+        #     p_pt_y = p_sample_sample[j][1]
+        #     p_dpt_x = p_sample_sample[j][2]
+        #     p_dpt_y = p_sample_sample[j][3]
+        #     new_target_trig.append(t[0])
+        #     new_target_param.append([
+        #         t[1] - p_pt_x, 
+        #         t[2] - p_pt_y,
+        #         angle_between(np.array([t[3], t[4]]), np.array([p_dpt_x, p_dpt_y])),
+        #         t[5]])
+        loss_target_trig.append(torch.FloatTensor(new_target_trig))
+        loss_target_param.append(torch.FloatTensor(new_target_param))
+        
+    # 
+    pred_triggers = torch.cat(pred_triggers, dim=0)
+    pred_line_params = torch.cat(pred_line_params, dim=0)
+    # 
+    loss_target_trig = torch.cat(loss_target_trig, dim=0).to(pred_triggers.device)
+    loss_target_param = torch.cat(loss_target_param, dim=0).to(pred_triggers.device)
+    # 
+    trig_idx = loss_target_trig >= 0.5
+    non_trig_idx = loss_target_trig < 0.5
+    # 
+    trig_loss = F.binary_cross_entropy(pred_triggers.squeeze(), loss_target_trig)
+    param_loss = F.mse_loss(pred_line_params[trig_idx], loss_target_param[trig_idx])
+    loss = trig_loss + param_loss
+    return loss
+
 def compute_hinge_loss(logit, mode):
     assert mode in ['d_real', 'd_fake', 'g']
     if mode == 'd_real':
@@ -82,7 +153,5 @@ def initialize_model(model):
         elif isinstance(m, nn.Linear):
             nn.init.kaiming_uniform_(m.weight, a=math.sqrt(5))
             if m.bias is not None:
-                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
-                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-                nn.init.uniform_(m.bias, -bound, bound)
+                nn.init.constant_(m.bias, 0)
 
