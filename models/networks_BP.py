@@ -73,8 +73,7 @@ class EmitLineParamPredictor(nn.Module):
         )
         self.trigger_pred = nn.Sequential(
             Linear(in_channels, in_channels, activate=None), 
-            Linear(in_channels, 1, activate=None), 
-            nn.Sigmoid()
+            Linear(in_channels, 2, activate=None)
         )
         # offset_x, offset_y, theta, length
         self.params_pred = nn.Sequential(
@@ -111,31 +110,6 @@ def sample_points_ellipse(cx, cy, rx, ry, step, image_size):
     dpys = tmp_dpys
     samples = torch.stack([pxs, pys, dpxs, dpys, ds], dim=-1)
     samples = samples.to(dtype=torch.float)
-    # samples = []
-    # for d in range(0, 3600, 1):
-    #     radian = (d / 10) * np.pi / 180
-    #     # px = cx + rx * np.cos(radian) * np.cos(rotation) - ry * np.sin(radian) * np.sin(rotation)
-    #     # py = cy + rx * np.cos(radian) * np.sin(rotation) + ry * np.sin(radian) * np.cos(rotation)
-    #     px = cx + rx * np.cos(radian)
-    #     py = cy + ry * np.sin(radian)
-    #     if px < -1 or px > 1 or py < -1 or py > 1:
-    #     # if px < 0 or px >= image_size or py < 0 or py >= image_size:
-    #         continue
-    #     # Tanget vector
-    #     # dpx = rx * -np.sin(radian) * np.cos(rotation) - ry * np.cos(radian) * np.sin(rotation)
-    #     # dpy = rx * -np.sin(radian) * np.sin(rotation) + ry * np.cos(radian) * np.cos(rotation)
-    #     dpx = rx * -np.sin(radian)
-    #     dpy = ry * np.cos(radian)
-    #     ldp = np.sqrt(np.square(dpx) + np.square(dpy))
-    #     dpx /= ldp
-    #     dpy /= ldp
-    #     # # Normal vector
-    #     tmp_dpx = dpx * np.cos(-np.pi / 2) - dpy * np.sin(-np.pi / 2)
-    #     tmp_dpy = dpx * np.sin(-np.pi / 2) + dpy * np.cos(-np.pi / 2)
-    #     dpx = tmp_dpx
-    #     dpy = tmp_dpy
-    #     samples.append([px, py, dpx, dpy, d]) 
-    # samples = torch.FloatTensor(samples)
     return samples
 
 class EmitLinePredictor(nn.Module):

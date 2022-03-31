@@ -50,6 +50,7 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         cx, cy, rx, ry = pred_ellipse_params[i].detach().cpu()
         cx, cy, rx, ry = int((cx * 0.5 + 0.5) * w), int((cy * 0.5 + 0.5) * h), int(rx * w), int(ry * h)
         p_triggers = pred_triggers[i].detach().cpu()
+        _, p_triggers = torch.max(p_triggers, dim=1)
         p_line_params = pred_line_params[i].detach().cpu()
         p_sample_sample = pred_sample_sample[i].detach().cpu()
 
@@ -74,9 +75,8 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
 
         lengths = lengths.reshape(-1, 1).repeat(1, ray_sample.size(1))
         p_triggers = p_triggers.reshape(-1, 1).repeat(1, ray_sample.size(1))
-        print(torch.max(p_triggers), torch.min(p_triggers))
         visual_pick = torch.logical_and(
-            p_triggers>0.2, torch.logical_and(
+            p_triggers==1, torch.logical_and(
                 line_pt_xs>=0, torch.logical_and(
                     line_pt_xs<w, torch.logical_and(
                         line_pt_ys>=0, torch.logical_and(
@@ -92,32 +92,6 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
 
         tmp_img[0, line_pt_ys, line_pt_xs] = 1.0
         tmp_bmask[0, line_pt_ys, line_pt_xs] = 1.0
-
-        # for j in range(len(p_triggers)):
-        #     if p_triggers[j] > 0.01:
-        #         p_offset_x = p_line_params[j][0]
-        #         p_offset_y = p_line_params[j][1]
-        #         p_theta = p_line_params[j][2]
-        #         p_length = max(0, min(p_line_params[j][3] * w, w - 1)) # or h
-
-        #         p_pt_x = ((p_sample_sample[j][0] + p_offset_x) * 0.5 + 0.5) * w
-        #         p_pt_y = ((p_sample_sample[j][1] + p_offset_y) * 0.5 + 0.5) * h
-        #         # p_pt_x = p_sample_sample[j][0] + p_offset_x
-        #         # p_pt_y = p_sample_sample[j][1] + p_offset_y
-        #         p_dpt_x = p_sample_sample[j][2]
-        #         p_dpt_y = p_sample_sample[j][3]
-
-        #         p_dpt_x, p_dpt_y = rotate_vector(p_dpt_x, p_dpt_y, p_theta)
-        #         line_pt_x = p_pt_x + torch.arange(0, p_length, 0.5) * p_dpt_x
-        #         line_pt_y = p_pt_y + torch.arange(0, p_length, 0.5) * p_dpt_y
-
-        #         line_pt_x = line_pt_x.to(dtype=torch.long)
-        #         line_pt_y = line_pt_y.to(dtype=torch.long)
-
-        #         for pt_x, pt_y in zip(line_pt_x, line_pt_y):
-        #             if pt_x >=0 and pt_x < w and pt_y >=0 and pt_y < h:
-        #                 tmp_img[0, pt_y, pt_x] = 1.0
-        #                 tmp_bmask[0, pt_y, pt_x] = 1.0
         
         for lx in range(rx):
             dst = cx + lx
