@@ -117,10 +117,21 @@ class EmitLinePredictor(nn.Module):
         super().__init__()
         self.image_size = image_size
         self.convs = nn.Sequential(
-            Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            Conv2d(in_channels, in_channels, 3, bn="batch")
+            Conv2d(in_channels, 128, 3, bn="batch"), 
+            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1), 
+            nn.BatchNorm2d(64, track_running_stats=False), 
+            nn.ReLU(), 
+            nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1), 
+            nn.BatchNorm2d(32, track_running_stats=False), 
+            nn.ReLU(), 
+            nn.ConvTranspose2d(32, 32, 4, stride=2, padding=1), 
+            nn.BatchNorm2d(32, track_running_stats=False), 
+            nn.ReLU(), 
+            Conv2d(32, 32, 3, bn="batch")
+            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
+            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
+            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
+            # Conv2d(in_channels, in_channels, 3, bn="batch")
             # Conv2d(in_channels, 32, 7, stride=1, bn="batch"), 
             # Conv2d(32, 64, 7, stride=1, bn="batch"), 
             # Conv2d(64, 64, 7, stride=2, bn="batch"), 
@@ -128,14 +139,15 @@ class EmitLinePredictor(nn.Module):
             # Conv2d(64, 64, 7, stride=1, bn="batch")
         )
         self.attention_blocks = nn.Sequential(
-            SCSEBlock(in_channels, reduction=4), 
-            SCSEBlock(in_channels, reduction=4), 
-            # SCSEBlock(64, reduction=4), 
-            # SCSEBlock(64, reduction=4), 
+            SCSEBlock(32, reduction=4), 
+            SCSEBlock(32, reduction=4), 
+            # SCSEBlock(in_channels, reduction=4), 
+            # SCSEBlock(in_channels, reduction=4), 
             nn.ReLU() 
         )
 
-        self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=in_channels)
+        # self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=in_channels)
+        self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=32)
 
     def process(self, x: torch.Tensor, params: torch.Tensor):
         b, c, h, w = x.shape
@@ -209,13 +221,13 @@ class ComposeNet(nn.Module):
         return output
 
 if __name__ == "__main__":
-    image_size = 256
+    image_size = 512
     batch_size = 4
 
     net = ComposeNet(image_size)
     net.cuda()
 
-    fake_img = torch.rand(batch_size, 1, image_size, image_size)
+    fake_img = torch.rand(batch_size, 3, image_size, image_size)
     fake_img = fake_img.cuda()
 
     # print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
@@ -233,11 +245,12 @@ if __name__ == "__main__":
 
     print("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
     net.eval()
-    res = net(fake_img)
-    ellipse_params = res["ellipse_params"]
-    if_triggers = res["if_triggers"]
-    line_params = res["line_params"]
-    for i in range(batch_size):
-        print(ellipse_params[i].shape)
-        print(if_triggers[i].shape)
-        print(line_params[i].shape)
+    with torch.no_grad():
+        res = net(fake_img)
+        ellipse_params = res["ellipse_params"]
+        if_triggers = res["if_triggers"]
+        line_params = res["line_params"]
+        for i in range(batch_size):
+            print(ellipse_params[i].shape)
+            print(if_triggers[i].shape)
+            print(line_params[i].shape)

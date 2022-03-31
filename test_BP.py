@@ -78,18 +78,18 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         line_pt_ys = p_pt_ys.reshape(-1, 1).repeat(1, ray_sample.size(1)) + ray_sample * p_dpt_ys.reshape(-1, 1).repeat(1, ray_sample.size(1))
 
         lengths = lengths.reshape(-1, 1).repeat(1, ray_sample.size(1))
-        p_triggers = p_triggers.reshape(-1, 1).repeat(1, ray_sample.size(1))
-        visual_pick = torch.logical_and(
-            p_triggers==1, torch.logical_and(
-                line_pt_xs>=0, torch.logical_and(
-                    line_pt_xs<w, torch.logical_and(
-                        line_pt_ys>=0, torch.logical_and(
-                            line_pt_ys<h, torch.lt(ray_sample, lengths))))))
+        # p_triggers = p_triggers.reshape(-1, 1).repeat(1, ray_sample.size(1))
         # visual_pick = torch.logical_and(
+        #     p_triggers==1, torch.logical_and(
         #         line_pt_xs>=0, torch.logical_and(
         #             line_pt_xs<w, torch.logical_and(
         #                 line_pt_ys>=0, torch.logical_and(
-        #                     line_pt_ys<h, torch.lt(ray_sample, lengths)))))
+        #                     line_pt_ys<h, torch.lt(ray_sample, lengths))))))
+        visual_pick = torch.logical_and(
+                line_pt_xs>=0, torch.logical_and(
+                    line_pt_xs<w, torch.logical_and(
+                        line_pt_ys>=0, torch.logical_and(
+                            line_pt_ys<h, torch.lt(ray_sample, lengths)))))
         
         line_pt_xs = line_pt_xs[visual_pick].to(dtype=torch.long)
         line_pt_ys = line_pt_ys[visual_pick].to(dtype=torch.long)
