@@ -67,7 +67,8 @@ def compute_ellipse_param_loss(preds, gt_targets):
     gt_targets = gt_targets.to(preds.device)
     # Weight
     gt_targets[:, :4] = gt_targets[:, :4] * 10
-    loss = F.mse_loss(preds, gt_targets)
+    # loss = F.mse_loss(preds, gt_targets)
+    loss = F.l1_loss(preds, gt_targets)
     # print(preds, gt_targets)
     return loss
 
@@ -129,7 +130,7 @@ def compute_ellipse_pt_loss(preds, gt_targets):
     non_trig_idx = loss_target_trig < 0.5
     # 
     trig_loss = F.binary_cross_entropy(pred_triggers.squeeze(), loss_target_trig)
-    param_loss = F.mse_loss(pred_line_params[trig_idx], loss_target_param[trig_idx])
+    param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx])
     loss = trig_loss + param_loss
     return loss
 

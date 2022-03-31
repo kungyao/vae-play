@@ -47,8 +47,8 @@ class EllipseParamPredictor(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fcs = nn.Sequential(
             Linear(in_channels, in_channels, activate=None), 
-            # For cx, cy, rx, ry, step.
-            Linear(in_channels, 5, activate=None), 
+            # For cx, cy, rx, ry, # step.
+            Linear(in_channels, 4, activate=None), 
         )
     
     def forward(self, x: torch.Tensor):
@@ -143,25 +143,25 @@ class EmitLinePredictor(nn.Module):
         super().__init__()
         self.image_size = image_size
         self.convs = nn.Sequential(
-            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            # Conv2d(in_channels, in_channels, 3, bn="batch")
-            Conv2d(in_channels, 32, 7, stride=1, bn="batch"), 
-            Conv2d(32, 64, 7, stride=1, bn="batch"), 
-            Conv2d(64, 64, 7, stride=2, bn="batch"), 
-            Conv2d(64, 64, 7, stride=2, bn="batch"), 
-            Conv2d(64, 64, 7, stride=1, bn="batch")
+            Conv2d(in_channels, in_channels, 3, bn="batch"), 
+            Conv2d(in_channels, in_channels, 3, bn="batch"), 
+            Conv2d(in_channels, in_channels, 3, bn="batch"), 
+            Conv2d(in_channels, in_channels, 3, bn="batch")
+            # Conv2d(in_channels, 32, 7, stride=1, bn="batch"), 
+            # Conv2d(32, 64, 7, stride=1, bn="batch"), 
+            # Conv2d(64, 64, 7, stride=2, bn="batch"), 
+            # Conv2d(64, 64, 7, stride=2, bn="batch"), 
+            # Conv2d(64, 64, 7, stride=1, bn="batch")
         )
         self.attention_blocks = nn.Sequential(
-            # SCSEBlock(in_channels, reduction=4), 
-            # SCSEBlock(in_channels, reduction=4), 
-            SCSEBlock(64, reduction=4), 
-            SCSEBlock(64, reduction=4), 
+            SCSEBlock(in_channels, reduction=4), 
+            SCSEBlock(in_channels, reduction=4), 
+            # SCSEBlock(64, reduction=4), 
+            # SCSEBlock(64, reduction=4), 
             nn.ReLU() 
         )
 
-        self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=64)
+        self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=in_channels)
 
     def process(self, x: torch.Tensor, params: torch.Tensor):
         b, c, h, w = x.shape
@@ -174,9 +174,10 @@ class EmitLinePredictor(nn.Module):
         feature_points = []
         # Weight
         params[:, :4] = params[:, :4] / 10
-        for i, (cx, cy, rx, ry, step) in enumerate(params):
+        # for i, (cx, cy, rx, ry, step) in enumerate(params):
+        for i, (cx, cy, rx, ry) in enumerate(params):
             # print(cx, cy, rx, ry, step)
-            info_pts = sample_points_ellipse(cx, cy, rx, ry, step, self.image_size)
+            info_pts = sample_points_ellipse(cx, cy, rx, ry, 1, self.image_size)
             # 
             ellipse_ptx = info_pts[:, 0]
             ellipse_pty = info_pts[:, 1]
@@ -215,14 +216,14 @@ class ComposeNet(nn.Module):
         # self.add_coord = AddCoords(if_normalize=True)
         self.encoder = ContentEndoer()
         self.ellipse_predictor = EllipseParamPredictor(self.encoder.out_channels)
-        # self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=self.encoder.out_channels)
-        self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=3)
+        self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=self.encoder.out_channels)
+        # self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=3)
 
     def forward(self, x):
         # x = self.add_coord(x)
-        # x = self.encoder(x)
-        # ellipse_params = self.ellipse_predictor(x)
-        ellipse_params = self.ellipse_predictor(self.encoder(x))
+        x = self.encoder(x)
+        ellipse_params = self.ellipse_predictor(x)
+        # ellipse_params = self.ellipse_predictor(self.encoder(x))
         if_triggers, line_params, sample_infos = self.emit_line_predictor(x, ellipse_params.detach().cpu())
         output = {}
         if_triggers = if_triggers.split(sample_infos["size"], 0)

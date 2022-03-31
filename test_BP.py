@@ -27,13 +27,17 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         imgs = imgs[:, 0, :, :].reshape(b, 1, h, w)
         ellipses = ellipses[:, 0, :, :].reshape(b, 1, h, w)
 
+    print("AAAAAAAAAAAAAAAAAA")
     pred_ellipse_params = predictions["ellipse_params"]
+    print(pred_ellipse_params)
     # Weight
     pred_ellipse_params[:, :4] = pred_ellipse_params[:, :4]/10
+    # print(pred_ellipse_params)
 
     pred_triggers = predictions["if_triggers"]
     pred_line_params = predictions["line_params"]
     pred_sample_sample = predictions["sample_infos"]["sample"]
+
 
     results = []
     results_w_mask = []
@@ -41,8 +45,10 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         tmp_img = torch.zeros((1, h, w))
         tmp_bmask = bmasks[i].clone()
 
-        cx, cy, rx, ry, step = pred_ellipse_params[i].detach().cpu()
-        cx, cy, rx, ry, step = int((cx * 0.5 + 0.5) * w), int((cy * 0.5 + 0.5) * h), int(rx * w), int(ry * h), int(step)
+        # cx, cy, rx, ry, step = pred_ellipse_params[i].detach().cpu()
+        # cx, cy, rx, ry, step = int((cx * 0.5 + 0.5) * w), int((cy * 0.5 + 0.5) * h), int(rx * w), int(ry * h), int(step)
+        cx, cy, rx, ry = pred_ellipse_params[i].detach().cpu()
+        cx, cy, rx, ry = int((cx * 0.5 + 0.5) * w), int((cy * 0.5 + 0.5) * h), int(rx * w), int(ry * h)
         p_triggers = pred_triggers[i].detach().cpu()
         p_line_params = pred_line_params[i].detach().cpu()
         p_sample_sample = pred_sample_sample[i].detach().cpu()
@@ -68,8 +74,9 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
 
         lengths = lengths.reshape(-1, 1).repeat(1, ray_sample.size(1))
         p_triggers = p_triggers.reshape(-1, 1).repeat(1, ray_sample.size(1))
+        print(torch.max(p_triggers), torch.min(p_triggers))
         visual_pick = torch.logical_and(
-            p_triggers>0.05, torch.logical_and(
+            p_triggers>0.2, torch.logical_and(
                 line_pt_xs>=0, torch.logical_and(
                     line_pt_xs<w, torch.logical_and(
                         line_pt_ys>=0, torch.logical_and(
