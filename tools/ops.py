@@ -65,9 +65,11 @@ def compute_pt_regression_loss(predict_contours, predict_regressions, target_con
 
 def compute_ellipse_param_loss(preds, gt_targets):
     gt_targets = gt_targets.to(preds.device)
+
+    value_weight = 10
+
     # Weight
-    gt_targets[:, :4] = gt_targets[:, :4] * 10
-    # loss = F.mse_loss(preds, gt_targets)
+    gt_targets[:, :4] = gt_targets[:, :4] * value_weight
     loss = F.l1_loss(preds, gt_targets)
     # print(preds, gt_targets)
     return loss
@@ -80,6 +82,8 @@ def compute_ellipse_pt_loss(preds, gt_targets):
     pred_sample_size = preds["sample_infos"]["size"]
     # px, py, dpx, dpy, d
     pred_sample_sample = preds["sample_infos"]["sample"]
+
+    value_weight = 10
 
     # Collect matches
     loss_target_trig = []
@@ -94,10 +98,10 @@ def compute_ellipse_pt_loss(preds, gt_targets):
         ts = target[p_sample_dense]
         new_target_trig = ts[:, 0]
         new_target_param = torch.stack([
-            ts[:, 1] - p_sample_sample[:, 0], 
-            ts[:, 2] - p_sample_sample[:, 1], 
+            (ts[:, 1] - p_sample_sample[:, 0]) * value_weight, 
+            (ts[:, 2] - p_sample_sample[:, 1]) * value_weight, 
             torch.arccos(torch.clip(ts[:, 3] * p_sample_sample[:, 2] + ts[:, 4] * p_sample_sample[:, 3], -1.0, 1.0)), 
-            ts[:, 5]
+            (ts[:, 5] * value_weight)
         ], dim=-1)
 
         loss_target_trig.append(torch.FloatTensor(new_target_trig))
@@ -116,7 +120,8 @@ def compute_ellipse_pt_loss(preds, gt_targets):
     # 
     # trig_loss = F.binary_cross_entropy(pred_triggers.squeeze(), loss_target_trig)
     trig_loss = F.cross_entropy(pred_triggers, loss_target_trig)
-    param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx])
+    # param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx])
+    param_loss = F.l1_loss(pred_line_params, loss_target_param)
     loss = trig_loss + param_loss
     return loss
 

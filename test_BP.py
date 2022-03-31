@@ -38,7 +38,6 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
     pred_line_params = predictions["line_params"]
     pred_sample_sample = predictions["sample_infos"]["sample"]
 
-
     results = []
     results_w_mask = []
     for i in range(b):
@@ -53,6 +52,11 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         _, p_triggers = torch.max(p_triggers, dim=1)
         p_line_params = pred_line_params[i].detach().cpu()
         p_sample_sample = pred_sample_sample[i].detach().cpu()
+
+        # Weight
+        p_line_params[:, 0] = p_line_params[:, 0] / 10
+        p_line_params[:, 1] = p_line_params[:, 1] / 10
+        p_line_params[:, 3] = p_line_params[:, 3] / 10
 
         p_pt_xs = ((p_sample_sample[:, 0] + p_line_params[:, 0]) * 0.5 + 0.5) * w
         p_pt_ys = ((p_sample_sample[:, 1] + p_line_params[:, 1]) * 0.5 + 0.5) * h
