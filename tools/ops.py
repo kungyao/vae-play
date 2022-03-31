@@ -65,6 +65,8 @@ def compute_pt_regression_loss(predict_contours, predict_regressions, target_con
 
 def compute_ellipse_param_loss(preds, gt_targets):
     gt_targets = gt_targets.to(preds.device)
+    # Weight
+    gt_targets[:, :4] = gt_targets[:, :4] * 10
     loss = F.mse_loss(preds, gt_targets)
     # print(preds, gt_targets)
     return loss

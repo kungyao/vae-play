@@ -28,6 +28,9 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         ellipses = ellipses[:, 0, :, :].reshape(b, 1, h, w)
 
     pred_ellipse_params = predictions["ellipse_params"]
+    # Weight
+    pred_ellipse_params[:, :4] = pred_ellipse_params[:, :4]/10
+
     pred_triggers = predictions["if_triggers"]
     pred_line_params = predictions["line_params"]
     pred_sample_sample = predictions["sample_infos"]["sample"]
@@ -65,18 +68,17 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
 
         lengths = lengths.reshape(-1, 1).repeat(1, ray_sample.size(1))
         p_triggers = p_triggers.reshape(-1, 1).repeat(1, ray_sample.size(1))
-        # visual_pick = torch.logical_and(
-        #     p_triggers>0.01, torch.logical_and(
-        #         line_pt_xs>=0, torch.logical_and(
-        #             line_pt_xs<w, torch.logical_and(
-        #                 line_pt_ys>=0, torch.logical_and(
-        #                     line_pt_ys<h, torch.lt(ray_sample, lengths))))))
-        print(torch.max(p_triggers))
         visual_pick = torch.logical_and(
+            p_triggers>0.05, torch.logical_and(
                 line_pt_xs>=0, torch.logical_and(
                     line_pt_xs<w, torch.logical_and(
                         line_pt_ys>=0, torch.logical_and(
-                            line_pt_ys<h, torch.lt(ray_sample, lengths)))))
+                            line_pt_ys<h, torch.lt(ray_sample, lengths))))))
+        # visual_pick = torch.logical_and(
+        #         line_pt_xs>=0, torch.logical_and(
+        #             line_pt_xs<w, torch.logical_and(
+        #                 line_pt_ys>=0, torch.logical_and(
+        #                     line_pt_ys<h, torch.lt(ray_sample, lengths)))))
         
         line_pt_xs = line_pt_xs[visual_pick].to(dtype=torch.long)
         line_pt_ys = line_pt_ys[visual_pick].to(dtype=torch.long)
@@ -124,8 +126,9 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
     results = torch.stack(results, dim=0)
     results_w_mask = torch.stack(results_w_mask, dim=0)
 
+    # bmasks, 
     vutils.save_image(
-        torch.cat([imgs, ellipses, bmasks, results, results_w_mask], dim=0), 
+        torch.cat([imgs, ellipses, results, results_w_mask], dim=0), 
         os.path.join(result_path, f"{result_name}.png"),
         nrow=b, 
         padding=2, 

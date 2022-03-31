@@ -127,7 +127,9 @@ if __name__ == "__main__":
     net.cuda(args.gpu)
 
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, 1, gamma=0.1)
+    step_size = args.epochs // 3
+    step_size = 1 if step_size == 0 else step_size
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size, gamma=0.1)
 
     for epoch in range(args.epochs):
         train(args, epoch, args.iterations, net, optim, dloader)

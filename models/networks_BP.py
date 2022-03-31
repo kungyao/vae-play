@@ -172,6 +172,8 @@ class EmitLinePredictor(nn.Module):
             "sample": [], 
         }
         feature_points = []
+        # Weight
+        params[:, :4] = params[:, :4] / 10
         for i, (cx, cy, rx, ry, step) in enumerate(params):
             # print(cx, cy, rx, ry, step)
             info_pts = sample_points_ellipse(cx, cy, rx, ry, step, self.image_size)
