@@ -78,7 +78,7 @@ class EmitLineParamPredictor(nn.Module):
         # offset_x, offset_y, theta, length
         self.params_pred = nn.Sequential(
             Linear(in_channels, in_channels, activate=None), 
-            Linear(in_channels, 4, activate=None)
+            Linear(in_channels, 3, activate=None)
         )
     
     def forward(self, x: torch.Tensor):

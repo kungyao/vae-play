@@ -101,7 +101,7 @@ def compute_ellipse_pt_loss(preds, gt_targets):
             (ts[:, 1] - p_sample_sample[:, 0]) * value_weight, 
             (ts[:, 2] - p_sample_sample[:, 1]) * value_weight, 
             torch.arccos(torch.clip(ts[:, 3] * p_sample_sample[:, 2] + ts[:, 4] * p_sample_sample[:, 3], -1.0, 1.0)), 
-            (ts[:, 5] * value_weight)
+            # (ts[:, 5] * value_weight)
         ], dim=-1)
 
         loss_target_trig.append(torch.FloatTensor(new_target_trig))
@@ -119,7 +119,7 @@ def compute_ellipse_pt_loss(preds, gt_targets):
     non_trig_idx = loss_target_trig < 0.5
     # 
     # trig_loss = F.binary_cross_entropy(pred_triggers.squeeze(), loss_target_trig)
-    trig_loss = F.cross_entropy(pred_triggers, loss_target_trig)
+    trig_loss = F.cross_entropy(pred_triggers, loss_target_trig) * value_weight
     # param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx])
     param_loss = F.l1_loss(pred_line_params, loss_target_param)
     loss = trig_loss + param_loss
