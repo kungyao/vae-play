@@ -31,7 +31,7 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
     pred_ellipse_params = predictions["ellipse_params"]
     print(pred_ellipse_params)
     # Weight
-    pred_ellipse_params[:, :4] = pred_ellipse_params[:, :4]/10
+    pred_ellipse_params[:, :4] = pred_ellipse_params[:, :4] / 10
     # print(pred_ellipse_params)
 
     pred_triggers = predictions["if_triggers"]
@@ -47,7 +47,7 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         # cx, cy, rx, ry, step = pred_ellipse_params[i].detach().cpu()
         # cx, cy, rx, ry, step = int((cx * 0.5 + 0.5) * w), int((cy * 0.5 + 0.5) * h), int(rx * w), int(ry * h), int(step)
         cx, cy, rx, ry = pred_ellipse_params[i].detach().cpu()
-        cx, cy, rx, ry = int((cx * 0.5 + 0.5) * w), int((cy * 0.5 + 0.5) * h), int(rx * w), int(ry * h)
+        cx, cy, rx, ry = int((cx * 0.5 + 0.5) * w), int((cy * 0.5 + 0.5) * h), int(rx * 0.5 * w), int(ry * 0.5 * h)
         p_triggers = pred_triggers[i].detach().cpu()
         _, p_triggers = torch.max(p_triggers, dim=1)
         p_line_params = pred_line_params[i].detach().cpu()
@@ -56,7 +56,7 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         # Weight
         p_line_params[:, 0] = p_line_params[:, 0] / 10
         p_line_params[:, 1] = p_line_params[:, 1] / 10
-        # p_line_params[:, 3] = p_line_params[:, 3] / 10
+        p_line_params[:, 3] = p_line_params[:, 3] / 10
 
         p_pt_xs = ((p_sample_sample[:, 0] + p_line_params[:, 0]) * 0.5 + 0.5) * w
         p_pt_ys = ((p_sample_sample[:, 1] + p_line_params[:, 1]) * 0.5 + 0.5) * h
@@ -69,28 +69,28 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         p_dpt_xs = tmp_p_dpt_x
         p_dpt_ys = tmp_p_dpt_y
 
-        # lengths = p_line_params[:, 3] * w
-        # lengths = lengths.to(dtype=torch.long)
-        # max_length = max(int(torch.max(lengths)), 1)
-        max_length = 256
+        lengths = p_line_params[:, 3] * w
+        lengths = lengths.to(dtype=torch.long)
+        max_length = max(int(torch.max(lengths)), 1)
+        # max_length = 256
         
         ray_sample = torch.arange(0, max_length, 1).reshape(1, -1).repeat(p_dpt_xs.size(0), 1)
         line_pt_xs = p_pt_xs.reshape(-1, 1).repeat(1, ray_sample.size(1)) + ray_sample * p_dpt_xs.reshape(-1, 1).repeat(1, ray_sample.size(1))
         line_pt_ys = p_pt_ys.reshape(-1, 1).repeat(1, ray_sample.size(1)) + ray_sample * p_dpt_ys.reshape(-1, 1).repeat(1, ray_sample.size(1))
 
-        # lengths = lengths.reshape(-1, 1).repeat(1, ray_sample.size(1))
+        lengths = lengths.reshape(-1, 1).repeat(1, ray_sample.size(1))
         p_triggers = p_triggers.reshape(-1, 1).repeat(1, ray_sample.size(1))
-        # visual_pick = torch.logical_and(
-        #     p_triggers==1, torch.logical_and(
-        #         line_pt_xs>=0, torch.logical_and(
-        #             line_pt_xs<w, torch.logical_and(
-        #                 line_pt_ys>=0, torch.logical_and(
-        #                     line_pt_ys<h, torch.lt(ray_sample, lengths))))))
         visual_pick = torch.logical_and(
             p_triggers==1, torch.logical_and(
                 line_pt_xs>=0, torch.logical_and(
                     line_pt_xs<w, torch.logical_and(
-                        line_pt_ys>=0, line_pt_ys<h))))
+                        line_pt_ys>=0, torch.logical_and(
+                            line_pt_ys<h, torch.lt(ray_sample, lengths))))))
+        # visual_pick = torch.logical_and(
+        #     p_triggers==1, torch.logical_and(
+        #         line_pt_xs>=0, torch.logical_and(
+        #             line_pt_xs<w, torch.logical_and(
+        #                 line_pt_ys>=0, line_pt_ys<h))))
         # visual_pick = torch.logical_and(
         #         line_pt_xs>=0, torch.logical_and(
         #             line_pt_xs<w, torch.logical_and(
@@ -102,6 +102,11 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
 
         tmp_img[0, line_pt_ys, line_pt_xs] = 1.0
         tmp_bmask[0, line_pt_ys, line_pt_xs] = 1.0
+
+        # p_pt_xs = p_pt_xs.to(torch.long)
+        # p_pt_ys = p_pt_ys.to(torch.long)
+        # tmp_img[0, p_pt_ys, p_pt_xs] = 1.0
+        # tmp_bmask[0, p_pt_ys, p_pt_xs] = 1.0
         
         for lx in range(rx):
             dst = cx + lx

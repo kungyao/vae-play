@@ -390,8 +390,8 @@ class BPDataset(Dataset):
             (data["center_y"] * scale - 0.5) / 0.5, 
             # data["center_x"] * scale, 
             # data["center_y"] * scale, 
-            data["radius_x"] * scale, 
-            data["radius_y"] * scale, 
+            data["radius_x"] * scale / 0.5, 
+            data["radius_y"] * scale / 0.5, 
             # data["step"]
         ])
         phase2 = np.array(data["samples"])
@@ -402,7 +402,7 @@ class BPDataset(Dataset):
         # phase2[:, 2] = phase2[:, 2] * scale
         # phase2[:, 3] = phase2[:, 3]
         # phase2[:, 4] = phase2[:, 4]
-        phase2[:, 5] = phase2[:, 5] * scale
+        phase2[:, 5] = phase2[:, 5] * scale / 0.5
         # phase2[:, 6] = phase2[:, 6]
         # 
         img = TF.to_tensor(img)
