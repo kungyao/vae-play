@@ -64,19 +64,18 @@ class EmitLineParamPredictor(nn.Module):
         self.batch_attention = nn.Sequential(
             SelfAttentionBlock(fix_steps), 
             SelfAttentionBlock(fix_steps), 
+            SelfAttentionBlock(fix_steps), 
             SelfAttentionBlock(fix_steps)
         )
 
-        self.fcs = nn.Sequential(
-            Linear(in_channels, in_channels, activate=None), 
-            Linear(in_channels, in_channels, activate=None)
-        )
         self.trigger_pred = nn.Sequential(
+            Linear(in_channels, in_channels, activate=None), 
             Linear(in_channels, in_channels, activate=None), 
             Linear(in_channels, 2, activate=None)
         )
         # offset_x, offset_y, theta, length
         self.params_pred = nn.Sequential(
+            Linear(in_channels, in_channels, activate=None), 
             Linear(in_channels, in_channels, activate=None), 
             Linear(in_channels, 3, activate=None)
         )
@@ -85,7 +84,6 @@ class EmitLineParamPredictor(nn.Module):
         x = x.reshape(x.size(0), x.size(1), x.size(2), -1)
         x = self.batch_attention(x)
         x = x.reshape(x.size(0) * x.size(1), x.size(2))
-        x = self.fcs(x)
         if_trigger = self.trigger_pred(x)
         preds = self.params_pred(x)
         return if_trigger, preds

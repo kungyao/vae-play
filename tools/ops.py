@@ -117,9 +117,24 @@ def compute_ellipse_pt_loss(preds, gt_targets):
     # 
     trig_idx = loss_target_trig >= 0.5
     non_trig_idx = loss_target_trig < 0.5
+    # Do data balance
+    trig_sum = torch.sum(trig_idx)
+    non_trig_sum = torch.sum(non_trig_idx)
+    # 
+    # Resample data by under-sample mode.
+    # if trig_sum > non_trig_sum:
+    #     trig_select = torch.randperm(trig_sum)[:non_trig_sum]
+    #     pred_line_params = torch.cat([pred_line_params[trig_select], pred_line_params[non_trig_idx]], dim=0)
+    #     loss_target_param = torch.cat([loss_target_param[trig_select], loss_target_param[non_trig_idx]], dim=0)
+    # elif non_trig_sum > trig_sum:
+    #     non_trig_select = torch.randperm(non_trig_sum)[:trig_sum]
+    #     pred_line_params = torch.cat([pred_line_params[trig_idx], pred_line_params[non_trig_select]], dim=0)
+    #     loss_target_param = torch.cat([loss_target_param[trig_idx], loss_target_param[non_trig_select]], dim=0)
     # 
     # trig_loss = F.binary_cross_entropy(pred_triggers.squeeze(), loss_target_trig)
-    trig_loss = F.cross_entropy(pred_triggers, loss_target_trig) * value_weight
+    # trig_loss = F.cross_entropy(pred_triggers, loss_target_trig) * value_weight
+    trig_loss = F.cross_entropy(pred_triggers[trig_idx], loss_target_trig[trig_idx], reduce='sum') / trig_sum + F.cross_entropy(pred_triggers[non_trig_idx], loss_target_trig[non_trig_idx], reduce='sum') / non_trig_sum
+    #trig_loss = trig_loss * value_weight
     # param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx])
     param_loss = F.l1_loss(pred_line_params, loss_target_param)
     loss = trig_loss + param_loss
