@@ -17,16 +17,16 @@ class ContentEndoer(nn.Module):
         # resnet = resnet50(pretrained=True)
         # self.backbone = nn.Sequential(*list(resnet.children())[:-2])
         # backbone = resnet_fpn_backbone('resnet50', True)
-        self.out_channels = 256
+        self.out_channels = 128
         self.convs = nn.Sequential(
-            Conv2d(3, 64, 3), 
-            Conv2d(64, 128, 3), 
-            Conv2d(128, 256, 3, stride=2), 
+            Conv2d(3, 32, 3), 
+            Conv2d(32, 64, 3, stride=2), 
+            Conv2d(64, 128, 3, stride=2), 
             # deepcopy(resnet.layer1), # 256
             # deepcopy(resnet.layer2), # 512
             # deepcopy(resnet.layer3), # 1024
             # deepcopy(resnet.layer4), # 2048
-            Conv2d(256, self.out_channels, 3, stride=2),  
+            Conv2d(128, self.out_channels, 3, stride=2),  
             Conv2d(self.out_channels, self.out_channels, 3, stride=2), 
             Conv2d(self.out_channels, self.out_channels, 3), 
             Conv2d(self.out_channels, self.out_channels, 3)
@@ -115,34 +115,41 @@ class EmitLinePredictor(nn.Module):
         super().__init__()
         self.image_size = image_size
         self.convs = nn.Sequential(
-            Conv2d(in_channels, 128, 3, bn="batch"), 
-            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1), 
-            nn.BatchNorm2d(64, track_running_stats=False), 
-            nn.ReLU(), 
-            nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1), 
-            nn.BatchNorm2d(32, track_running_stats=False), 
-            nn.ReLU(), 
-            nn.ConvTranspose2d(32, 32, 4, stride=2, padding=1), 
-            nn.BatchNorm2d(32, track_running_stats=False), 
-            nn.ReLU(), 
-            Conv2d(32, 32, 3, bn="batch")
+            # Conv2d(in_channels, 128, 3, bn="batch"), 
+            # nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1), 
+            # nn.BatchNorm2d(64, track_running_stats=False), 
+            # nn.ReLU(), 
+            # nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1), 
+            # nn.BatchNorm2d(32, track_running_stats=False), 
+            # nn.ReLU(), 
+            # nn.ConvTranspose2d(32, 32, 4, stride=2, padding=1), 
+            # nn.BatchNorm2d(32, track_running_stats=False), 
+            # nn.ReLU(), 
+            # Conv2d(32, 32, 3, bn="batch")
             # Conv2d(in_channels, in_channels, 3, bn="batch"), 
             # Conv2d(in_channels, in_channels, 3, bn="batch"), 
             # Conv2d(in_channels, in_channels, 3, bn="batch"), 
             # Conv2d(in_channels, in_channels, 3, bn="batch")
-            # Conv2d(in_channels, 32, 7, stride=1, bn="batch"), 
-            # Conv2d(32, 64, 7, stride=1, bn="batch"), 
-            # Conv2d(64, 64, 7, stride=2, bn="batch"), 
-            # Conv2d(64, 64, 7, stride=2, bn="batch"), 
-            # Conv2d(64, 64, 7, stride=1, bn="batch")
+            Conv2d(in_channels, 32, 3, stride=1, bn="batch"), 
+            Conv2d(32, 32, 3, stride=1, bn="batch"), 
+            SCSEBlock(32, reduction=2),
+            Conv2d(32, 32, 3, stride=1, bn="batch"), 
+            Conv2d(32, 32, 3, stride=1, bn="batch"), 
+            SCSEBlock(32, reduction=2),
+            Conv2d(32, 32, 3, stride=1, bn="batch"), 
+            Conv2d(32, 32, 3, stride=1, bn="batch"), 
+            SCSEBlock(32, reduction=2),
+            Conv2d(32, 32, 3, stride=1, bn=None, activate=None), 
+            Conv2d(32, 32, 3, stride=1, bn=None, activate=None), 
         )
-        self.attention_blocks = nn.Sequential(
-            SCSEBlock(32, reduction=4), 
-            SCSEBlock(32, reduction=4), 
-            # SCSEBlock(in_channels, reduction=4), 
-            # SCSEBlock(in_channels, reduction=4), 
-            nn.ReLU() 
-        )
+        # self.attention_blocks = nn.Sequential(
+        #     SCSEBlock(32, reduction=2), 
+        #     SCSEBlock(32, reduction=2), 
+        #     SCSEBlock(32, reduction=2), 
+        #     # SCSEBlock(in_channels, reduction=4), 
+        #     # SCSEBlock(in_channels, reduction=4), 
+        #     nn.ReLU() 
+        # )
 
         # self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=in_channels)
         self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=32)
@@ -173,7 +180,8 @@ class EmitLinePredictor(nn.Module):
             ellipse_pts = ellipse_pts.unsqueeze(0).unsqueeze(0)
             ellipse_pts = ellipse_pts.to(x.device)
             # 1 * C * H * W
-            sample_pts = grid_sample(x[i][None], ellipse_pts, mode='bicubic')
+            # 'bilinear' | 'nearest' | 'bicubic'
+            sample_pts = grid_sample(x[i][None], ellipse_pts, mode='bilinear')
             # 1 * C * 1 * N
             sample_pts = sample_pts.squeeze()
             # N * C
@@ -187,7 +195,6 @@ class EmitLinePredictor(nn.Module):
     
     def forward(self, x: torch.Tensor, params: torch.Tensor):
         x = self.convs(x)
-        x = self.attention_blocks(x)
         # Sample points on feature map. (batch, pt, in_channel(256)) -> (batch * pt, in_channel(256)).
         feature_pts, sample_infos = self.process(x, params) 
         # Do predict.
@@ -200,14 +207,14 @@ class ComposeNet(nn.Module):
         # self.add_coord = AddCoords(if_normalize=True)
         self.encoder = ContentEndoer()
         self.ellipse_predictor = EllipseParamPredictor(self.encoder.out_channels)
-        self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=self.encoder.out_channels)
-        # self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=3)
+        # self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=self.encoder.out_channels)
+        self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=3)
 
     def forward(self, x):
         # x = self.add_coord(x)
-        x = self.encoder(x)
-        ellipse_params = self.ellipse_predictor(x)
-        # ellipse_params = self.ellipse_predictor(self.encoder(x))
+        # x = self.encoder(x)
+        # ellipse_params = self.ellipse_predictor(x)
+        ellipse_params = self.ellipse_predictor(self.encoder(x))
         if_triggers, line_params, sample_infos = self.emit_line_predictor(x, ellipse_params.detach().cpu())
         output = {}
         if_triggers = if_triggers.split(sample_infos["size"], 0)

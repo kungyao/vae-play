@@ -69,7 +69,7 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
         p_dpt_xs = tmp_p_dpt_x
         p_dpt_ys = tmp_p_dpt_y
 
-        lengths = p_line_params[:, 3] * w
+        lengths = p_line_params[:, 3] * 0.5 * w
         lengths = lengths.to(dtype=torch.long)
         max_length = max(int(torch.max(lengths)), 1)
         # max_length = 256
