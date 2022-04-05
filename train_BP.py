@@ -28,7 +28,8 @@ def train(args, epoch, iterations, net, optim, train_loader):
     count = 0
     avg_loss = {
         "loss_ellipse_param": 0,
-        "loss_emit_line_param": 0
+        "loss_emit_line_param": 0, 
+        "loss_emit_line_param_pos_ellipse_param": 0
     }
 
     train_iter = iter(train_loader)
@@ -42,10 +43,10 @@ def train(args, epoch, iterations, net, optim, train_loader):
         b = imgs.size(0)
         imgs = imgs.cuda(args.gpu)
         # bmasks = bmasks.cuda(args.gpu)
-        # ellipses = ellipses.cuda(args.gpu)
+        ellipses = ellipses.cuda(args.gpu)
         # targets = [{k: v.cuda(args.gpu) for k, v in t.items()} for t in targets]
 
-        preds = net(imgs)
+        preds = net(ellipses)
         pred_ellipse_params = preds["ellipse_params"]
 
         p1_targets = torch.stack([gt_target["phase1"] for gt_target in targets], dim=0)
@@ -54,7 +55,15 @@ def train(args, epoch, iterations, net, optim, train_loader):
         p2_targets = torch.stack([gt_target["phase2"] for gt_target in targets], dim=0)
         loss_emit_line_param = compute_ellipse_pt_loss(preds, p2_targets)
 
-        losses = loss_ellipse_param + loss_emit_line_param
+        # p1_targets[:, :4] = p1_targets[:, :4] * 10
+        # if_triggers, line_params, sample_infos = net.emit_line_predictor(ellipses, p1_targets)
+        # preds_p2_only = {}
+        # preds_p2_only.update(if_triggers=if_triggers)
+        # preds_p2_only.update(line_params=line_params)
+        # preds_p2_only.update(sample_infos=sample_infos)
+        # loss_emit_line_param_pos_ellipse_param = compute_ellipse_pt_loss(preds_p2_only, p2_targets)
+
+        losses = loss_ellipse_param + loss_emit_line_param # + loss_emit_line_param_pos_ellipse_param
 
         optim.zero_grad()
         losses.backward()
@@ -64,6 +73,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
             next_count = count + imgs.size(0)
             avg_loss["loss_ellipse_param"] = (avg_loss["loss_ellipse_param"] * count + loss_ellipse_param.item()) / next_count
             avg_loss["loss_emit_line_param"] = (avg_loss["loss_emit_line_param"] * count + loss_emit_line_param.item()) / next_count
+            # avg_loss["loss_emit_line_param_pos_ellipse_param"] = (avg_loss["loss_emit_line_param_pos_ellipse_param"] * count + loss_emit_line_param_pos_ellipse_param.item()) / next_count
             count = next_count
 
             if (i+1) % args.viz_freq == 0:
@@ -73,7 +83,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
                     res_str += f"{key}: {round(avg_loss[key], 6)}; "
                 print(res_str)
                 imgs = imgs.cpu()
-                #　ellipses = ellipses.cpu()
+                ellipses = ellipses.cpu()
                 save_test_batch(imgs, bmasks, ellipses, targets, preds, args.res_output, f"{epoch}_{i+1}")
     return
 

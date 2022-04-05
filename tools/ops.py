@@ -70,7 +70,7 @@ def compute_ellipse_param_loss(preds, gt_targets):
 
     # Weight
     gt_targets[:, :4] = gt_targets[:, :4] * value_weight
-    loss = F.l1_loss(preds, gt_targets) * 2
+    loss = F.l1_loss(preds, gt_targets)
     # print(preds, gt_targets)
     return loss
 
@@ -97,12 +97,20 @@ def compute_ellipse_pt_loss(preds, gt_targets):
 
         ts = target[p_sample_dense]
         new_target_trig = ts[:, 0]
+        # new_target_param = torch.stack([
+        #     (ts[:, 1] - p_sample_sample[:, 0]) * value_weight, 
+        #     (ts[:, 2] - p_sample_sample[:, 1]) * value_weight, 
+        #     (ts[:, 1] + ts[:, 3] * ts[:, 5]) * value_weight, 
+        #     (ts[:, 2] + ts[:, 4] * ts[:, 5]) * value_weight, 
+        # ], dim=-1)
         new_target_param = torch.stack([
             (ts[:, 1] - p_sample_sample[:, 0]) * value_weight, 
             (ts[:, 2] - p_sample_sample[:, 1]) * value_weight, 
             torch.arccos(torch.clip(ts[:, 3] * p_sample_sample[:, 2] + ts[:, 4] * p_sample_sample[:, 3], -1.0, 1.0)), 
             (ts[:, 5] * value_weight)
         ], dim=-1)
+        # new_target_param = ts[:, 5] * value_weight
+        # new_target_param = new_target_param.reshape(-1, 1)
 
         loss_target_trig.append(torch.FloatTensor(new_target_trig))
         loss_target_param.append(torch.FloatTensor(new_target_param))
@@ -136,10 +144,10 @@ def compute_ellipse_pt_loss(preds, gt_targets):
     trig_loss = F.cross_entropy(pred_triggers[trig_idx], loss_target_trig[trig_idx], reduction='mean') + F.cross_entropy(pred_triggers[non_trig_idx], loss_target_trig[non_trig_idx], reduction='mean')
     # 
     pred_triggers = F.softmax(pred_triggers, dim=-1)
-    trig_loss = trig_loss + compute_dice_loss(pred_triggers[:, 0], 1 - loss_target_trig)#  + compute_dice_loss(pred_triggers[:, 1], loss_target_trig)
-    # trig_loss = trig_loss * 2
+    trig_loss = trig_loss + compute_dice_loss(pred_triggers[:, 0], 1 - loss_target_trig) * 2#  + compute_dice_loss(pred_triggers[:, 1], loss_target_trig)
+    trig_loss = trig_loss
     # param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx])
-    param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx], reduction='mean') + F.l1_loss(pred_line_params[non_trig_idx], loss_target_param[non_trig_idx], reduction='mean')
+    param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx], reduction='mean') + F.l1_loss(pred_line_params[non_trig_idx][:, :3], loss_target_param[non_trig_idx][:, :3], reduction='mean')
     loss = trig_loss + param_loss
     return loss
 

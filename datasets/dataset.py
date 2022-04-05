@@ -398,8 +398,6 @@ class BPDataset(Dataset):
         # phase2[:, 0] = phase2[:, 0]
         phase2[:, 1] = (phase2[:, 1] * scale - 0.5) / 0.5
         phase2[:, 2] = (phase2[:, 2] * scale - 0.5) / 0.5
-        # phase2[:, 1] = phase2[:, 1] * scale
-        # phase2[:, 2] = phase2[:, 2] * scale
         # phase2[:, 3] = phase2[:, 3]
         # phase2[:, 4] = phase2[:, 4]
         phase2[:, 5] = phase2[:, 5] * scale / 0.5

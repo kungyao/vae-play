@@ -19,17 +19,15 @@ class ContentEndoer(nn.Module):
         # backbone = resnet_fpn_backbone('resnet50', True)
         self.out_channels = 128
         self.convs = nn.Sequential(
-            Conv2d(3, 32, 3), 
-            Conv2d(32, 64, 3, stride=2), 
-            Conv2d(64, 128, 3, stride=2), 
+            Conv2d(3, 32, 5), 
+            Conv2d(32, 64, 5, stride=2), 
+            Conv2d(64, 128, 5, stride=2), 
             # deepcopy(resnet.layer1), # 256
             # deepcopy(resnet.layer2), # 512
             # deepcopy(resnet.layer3), # 1024
             # deepcopy(resnet.layer4), # 2048
             Conv2d(128, self.out_channels, 3, stride=2),  
-            Conv2d(self.out_channels, self.out_channels, 3, stride=2), 
-            Conv2d(self.out_channels, self.out_channels, 3), 
-            Conv2d(self.out_channels, self.out_channels, 3)
+            Conv2d(self.out_channels, self.out_channels, 3, stride=2)
         )
 
     def forward(self, x: torch.Tensor):
@@ -61,17 +59,21 @@ class EllipseParamPredictor(nn.Module):
 class EmitLineParamPredictor(nn.Module):
     def __init__(self, fix_steps=3600, in_channels=256):
         super().__init__()
-        self.batch_attention = nn.Sequential(
-            SelfAttentionBlock(fix_steps), 
+        self.batch_attention_a = nn.Sequential(
             SelfAttentionBlock(fix_steps), 
             SelfAttentionBlock(fix_steps), 
             SelfAttentionBlock(fix_steps)
         )
-
         self.trigger_pred = nn.Sequential(
             Linear(in_channels, in_channels, activate=None), 
             Linear(in_channels, in_channels, activate=None), 
             Linear(in_channels, 2, activate=None)
+        )
+
+        self.batch_attention_b = nn.Sequential(
+            SelfAttentionBlock(fix_steps), 
+            SelfAttentionBlock(fix_steps), 
+            SelfAttentionBlock(fix_steps)
         )
         # offset_x, offset_y, theta, length
         self.params_pred = nn.Sequential(
@@ -82,10 +84,14 @@ class EmitLineParamPredictor(nn.Module):
     
     def forward(self, x: torch.Tensor):
         x = x.reshape(x.size(0), x.size(1), x.size(2), -1)
-        x = self.batch_attention(x)
-        x = x.reshape(x.size(0) * x.size(1), x.size(2))
-        if_trigger = self.trigger_pred(x)
-        preds = self.params_pred(x)
+
+        x_a = self.batch_attention_a(x)
+        x_a = x_a.reshape(x_a.size(0) * x_a.size(1), x_a.size(2))
+        if_trigger = self.trigger_pred(x_a)
+
+        x_b = self.batch_attention_b(x)
+        x_b = x_b.reshape(x_b.size(0) * x_b.size(1), x_b.size(2))
+        preds = self.params_pred(x_b)
         return if_trigger, preds
 
 def sample_points_ellipse(cx, cy, rx, ry, step, image_size):
@@ -130,29 +136,18 @@ class EmitLinePredictor(nn.Module):
             # Conv2d(in_channels, in_channels, 3, bn="batch"), 
             # Conv2d(in_channels, in_channels, 3, bn="batch"), 
             # Conv2d(in_channels, in_channels, 3, bn="batch")
-            Conv2d(in_channels, 32, 3, stride=1, bn="batch"), 
-            Conv2d(32, 32, 3, stride=1, bn="batch"), 
-            SCSEBlock(32, reduction=2),
-            Conv2d(32, 32, 3, stride=1, bn="batch"), 
-            Conv2d(32, 32, 3, stride=1, bn="batch"), 
-            SCSEBlock(32, reduction=2),
-            Conv2d(32, 32, 3, stride=1, bn="batch"), 
-            Conv2d(32, 32, 3, stride=1, bn="batch"), 
-            SCSEBlock(32, reduction=2),
-            Conv2d(32, 32, 3, stride=1, bn=None, activate=None), 
-            Conv2d(32, 32, 3, stride=1, bn=None, activate=None), 
+            Conv2d(in_channels, 64, 1, stride=1, bn=None, activate=None), 
+            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
+            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
+            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
+            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
+            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
+            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
+            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
         )
-        # self.attention_blocks = nn.Sequential(
-        #     SCSEBlock(32, reduction=2), 
-        #     SCSEBlock(32, reduction=2), 
-        #     SCSEBlock(32, reduction=2), 
-        #     # SCSEBlock(in_channels, reduction=4), 
-        #     # SCSEBlock(in_channels, reduction=4), 
-        #     nn.ReLU() 
-        # )
 
         # self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=in_channels)
-        self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=32)
+        self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=64)
 
     def process(self, x: torch.Tensor, params: torch.Tensor):
         b, c, h, w = x.shape
@@ -181,7 +176,7 @@ class EmitLinePredictor(nn.Module):
             ellipse_pts = ellipse_pts.to(x.device)
             # 1 * C * H * W
             # 'bilinear' | 'nearest' | 'bicubic'
-            sample_pts = grid_sample(x[i][None], ellipse_pts, mode='bilinear')
+            sample_pts = grid_sample(x[i][None], ellipse_pts, mode='bicubic')
             # 1 * C * 1 * N
             sample_pts = sample_pts.squeeze()
             # N * C
@@ -199,6 +194,8 @@ class EmitLinePredictor(nn.Module):
         feature_pts, sample_infos = self.process(x, params) 
         # Do predict.
         if_triggers, line_params = self.param_predictor(feature_pts) 
+        if_triggers = if_triggers.split(sample_infos["size"], 0)
+        line_params = line_params.split(sample_infos["size"], 0)
         return if_triggers, line_params, sample_infos
 
 class ComposeNet(nn.Module):
@@ -217,8 +214,6 @@ class ComposeNet(nn.Module):
         ellipse_params = self.ellipse_predictor(self.encoder(x))
         if_triggers, line_params, sample_infos = self.emit_line_predictor(x, ellipse_params.detach().cpu())
         output = {}
-        if_triggers = if_triggers.split(sample_infos["size"], 0)
-        line_params = line_params.split(sample_infos["size"], 0)
         output.update(ellipse_params=ellipse_params)
         output.update(if_triggers=if_triggers)
         output.update(line_params=line_params)
