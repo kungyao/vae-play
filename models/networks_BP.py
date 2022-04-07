@@ -46,7 +46,7 @@ class EllipseParamPredictor(nn.Module):
         self.fcs = nn.Sequential(
             Linear(in_channels, in_channels, activate=None), 
             # For cx, cy, rx, ry, # step.
-            Linear(in_channels, 4, activate=None), 
+            Linear(in_channels, 5, activate=None), 
         )
     
     def forward(self, x: torch.Tensor):
@@ -160,8 +160,8 @@ class EmitLinePredictor(nn.Module):
         feature_points = []
         # Weight
         params[:, :4] = params[:, :4] / 10
-        # for i, (cx, cy, rx, ry, step) in enumerate(params):
-        for i, (cx, cy, rx, ry) in enumerate(params):
+        for i, (cx, cy, rx, ry, step) in enumerate(params):
+        # for i, (cx, cy, rx, ry) in enumerate(params):
             # print(cx, cy, rx, ry, step)
             info_pts = sample_points_ellipse(cx, cy, rx, ry, 1, self.image_size)
             # 

@@ -392,7 +392,7 @@ class BPDataset(Dataset):
             # data["center_y"] * scale, 
             data["radius_x"] * scale / 0.5, 
             data["radius_y"] * scale / 0.5, 
-            # data["step"]
+            data["step"]
         ])
         phase2 = np.array(data["samples"])
         # phase2[:, 0] = phase2[:, 0]

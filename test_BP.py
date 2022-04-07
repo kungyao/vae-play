@@ -98,6 +98,9 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
     print("AAAAAAAAAAAAAAAAAA")
     pred_ellipse_params = predictions["ellipse_params"]
     print(pred_ellipse_params)
+    print("BBBBBBBBBBBBBBBBBB")
+    p1_targets = torch.stack([gt_target["phase1"] for gt_target in targets], dim=0)
+    print(p1_targets)
     # Weight
     pred_ellipse_params[:, :4] = pred_ellipse_params[:, :4] / 10
     # print(pred_ellipse_params)
@@ -114,7 +117,7 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
 
         # cx, cy, rx, ry, step = pred_ellipse_params[i].detach().cpu()
         # cx, cy, rx, ry, step = int((cx * 0.5 + 0.5) * w), int((cy * 0.5 + 0.5) * h), int(rx * w), int(ry * h), int(step)
-        cx, cy, rx, ry = pred_ellipse_params[i].detach().cpu()
+        cx, cy, rx, ry, step = pred_ellipse_params[i].detach().cpu()
         cx, cy, rx, ry = int((cx * 0.5 + 0.5) * w), int((cy * 0.5 + 0.5) * h), int(rx * 0.5 * w), int(ry * 0.5 * h)
         p_triggers = pred_triggers[i].detach().cpu()
         _, p_triggers = torch.max(p_triggers, dim=1)
