@@ -336,7 +336,7 @@ if __name__ == "__main__":
     for name, net in nets.items():
         nets[name] = net.cuda(args.gpu)
 
-    dset = BEDatasetGAN(args.path, (args.img_size, args.img_size))
+    dset = BEDatasetGAN(args.path, (args.img_size, args.img_size), select_list=["2", "3"])
     dloader = DataLoader(
         dset, 
         batch_size=args.batchsize, 

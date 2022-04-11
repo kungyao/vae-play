@@ -273,7 +273,7 @@ class BCDataset(Dataset):
 
 # 
 class BEDatasetGAN(Dataset):
-    def __init__(self, data_path, img_size, if_test=False) -> None:
+    def __init__(self, data_path, img_size, if_test=False, select_list=None) -> None:
         super().__init__()
         self.imgs = []
         self.masks = []
@@ -282,8 +282,9 @@ class BEDatasetGAN(Dataset):
 
         self.if_test = if_test
         for cls_name in os.listdir(data_path):
-            if cls_name not in ["2", "3"]:
-                 continue
+            if select_list is not None:
+                if cls_name not in select_list:
+                    continue
             cls_label = int(cls_name)
             if cls_label == 1 or cls_label == 2:
                 cls_label = 1
