@@ -46,7 +46,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
         ellipses = ellipses.cuda(args.gpu)
         # targets = [{k: v.cuda(args.gpu) for k, v in t.items()} for t in targets]
 
-        preds = net(ellipses)
+        preds = net(imgs)
         pred_ellipse_params = preds["ellipse_params"]
 
         p1_targets = torch.stack([gt_target["phase1"] for gt_target in targets], dim=0)
@@ -56,7 +56,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
         loss_emit_line_param = compute_ellipse_pt_loss(preds, p2_targets)
 
         # p1_targets[:, :4] = p1_targets[:, :4] * 10
-        # if_triggers, line_params, sample_infos = net.emit_line_predictor(ellipses, p1_targets)
+        # if_triggers, line_params, sample_infos = net.emit_line_predictor(imgs, p1_targets)
         # preds_p2_only = {}
         # preds_p2_only.update(if_triggers=if_triggers)
         # preds_p2_only.update(line_params=line_params)
@@ -78,7 +78,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
 
             if (i+1) % args.viz_freq == 0:
                 print("")
-                res_str = ""
+                res_str = f"[Epoch: {epoch}]。"
                 for key in avg_loss:
                     res_str += f"{key}: {round(avg_loss[key], 6)}; "
                 print(res_str)
@@ -137,7 +137,8 @@ if __name__ == "__main__":
     net.cuda(args.gpu)
 
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
-    step_size = args.epochs // 4
+    step_size = 2
+    # step_size = args.epochs // 4
     step_size = 1 if step_size == 0 else step_size
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size, gamma=0.1)
 

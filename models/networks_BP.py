@@ -5,11 +5,16 @@ import torch.nn as nn
 
 from torch.nn.functional import grid_sample
 from torchvision.models.resnet import resnet50
+from torchvision.models.densenet import densenet121
 
 try:
     from models.blocks import *
 except:
     from blocks import *
+
+SAMPLE_SCALE = 2
+SAMPLE_COUNT = int(360 * SAMPLE_SCALE)
+VALUE_WEIGHT = 10
 
 class ContentEndoer(nn.Module):
     def __init__(self):
@@ -17,18 +22,22 @@ class ContentEndoer(nn.Module):
         # resnet = resnet50(pretrained=True)
         # self.backbone = nn.Sequential(*list(resnet.children())[:-2])
         # backbone = resnet_fpn_backbone('resnet50', True)
-        self.out_channels = 128
-        self.convs = nn.Sequential(
-            Conv2d(3, 32, 5), 
-            Conv2d(32, 64, 5, stride=2), 
-            Conv2d(64, 128, 5, stride=2), 
-            # deepcopy(resnet.layer1), # 256
-            # deepcopy(resnet.layer2), # 512
-            # deepcopy(resnet.layer3), # 1024
-            # deepcopy(resnet.layer4), # 2048
-            Conv2d(128, self.out_channels, 3, stride=2),  
-            Conv2d(self.out_channels, self.out_channels, 3, stride=2)
-        )
+        backbone = densenet121()
+        self.out_channels = 1024
+        # self.convs = nn.Sequential(
+        #     Conv2d(3, 32, 5), 
+        #     Conv2d(32, 64, 5, stride=2), 
+        #     Conv2d(64, 128, 5, stride=2), 
+        #     # deepcopy(resnet.layer1), # 256
+        #     # deepcopy(resnet.layer2), # 512
+        #     # deepcopy(resnet.layer3), # 1024
+        #     # deepcopy(resnet.layer4), # 2048
+        #     Conv2d(128, self.out_channels, 3, stride=2),  
+        #     Conv2d(self.out_channels, self.out_channels, 3, stride=2),
+        #     Conv2d(self.out_channels, self.out_channels, 3),
+        #     Conv2d(self.out_channels, self.out_channels, 3)
+        # )
+        self.convs = nn.Sequential(torch.nn.Sequential(*list(backbone.children())[:-1]))
 
     def forward(self, x: torch.Tensor):
         x = self.convs(x)
@@ -37,27 +46,27 @@ class ContentEndoer(nn.Module):
 class EllipseParamPredictor(nn.Module):
     def __init__(self, in_channels=256):
         super().__init__()
-        self.convs = nn.Sequential(
-            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
-            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
-            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
-        )
+        # self.convs = nn.Sequential(
+        #     Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
+        #     Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
+        #     Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
+        # )
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fcs = nn.Sequential(
             Linear(in_channels, in_channels, activate=None), 
-            # For cx, cy, rx, ry, # step.
+            # For cx, cy, rx, ry, step.
             Linear(in_channels, 5, activate=None), 
         )
     
     def forward(self, x: torch.Tensor):
-        x = self.convs(x)
+        # x = self.convs(x)
         x = self.avgpool(x)
         x = x.reshape(x.size(0), -1)
         x = self.fcs(x)
         return x
 
 class EmitLineParamPredictor(nn.Module):
-    def __init__(self, fix_steps=3600, in_channels=256):
+    def __init__(self, fix_steps=SAMPLE_COUNT, in_channels=256):
         super().__init__()
         self.batch_attention_a = nn.Sequential(
             SelfAttentionBlock(fix_steps), 
@@ -96,10 +105,10 @@ class EmitLineParamPredictor(nn.Module):
 
 def sample_points_ellipse(cx, cy, rx, ry, step, image_size):
     # step = int(step)
-    # if step < 1:
-    #     step = 1
-    ds = torch.arange(0, 3600, 1)
-    radians = ds / 10 * np.pi / 180
+    # if step < 1 / SAMPLE_SCALE:
+    #     step = 1 / SAMPLE_SCALE
+    ds = torch.arange(0, SAMPLE_COUNT, 1)
+    radians = ds / SAMPLE_SCALE * np.pi / 180
     pxs = cx + rx * torch.cos(radians)
     pys = cy + ry * torch.sin(radians)
     dpxs = rx * -torch.sin(radians)
@@ -120,34 +129,43 @@ class EmitLinePredictor(nn.Module):
     def __init__(self, image_size, in_channels=256):
         super().__init__()
         self.image_size = image_size
-        self.convs = nn.Sequential(
-            # Conv2d(in_channels, 128, 3, bn="batch"), 
-            # nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1), 
-            # nn.BatchNorm2d(64, track_running_stats=False), 
-            # nn.ReLU(), 
-            # nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1), 
-            # nn.BatchNorm2d(32, track_running_stats=False), 
-            # nn.ReLU(), 
-            # nn.ConvTranspose2d(32, 32, 4, stride=2, padding=1), 
-            # nn.BatchNorm2d(32, track_running_stats=False), 
-            # nn.ReLU(), 
-            # Conv2d(32, 32, 3, bn="batch")
-            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            # Conv2d(in_channels, in_channels, 3, bn="batch")
-            Conv2d(in_channels, 64, 1, stride=1, bn=None, activate=None), 
-            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
-            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
-            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
-            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
-            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
-            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
-            Conv2d(64, 64, 1, stride=1, bn=None, activate=None), 
-        )
+        backbone = densenet121()
+        self.convs = torch.nn.Sequential(*list(backbone.features.children())[:-5])
+        # self.convs = nn.Sequential(
+        #     # Conv2d(in_channels, 128, 3, bn="batch"), 
+        #     # nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1), 
+        #     # nn.BatchNorm2d(64, track_running_stats=False), 
+        #     # nn.ReLU(), 
+        #     # nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1), 
+        #     # nn.BatchNorm2d(32, track_running_stats=False), 
+        #     # nn.ReLU(), 
+        #     # nn.ConvTranspose2d(32, 32, 4, stride=2, padding=1), 
+        #     # nn.BatchNorm2d(32, track_running_stats=False), 
+        #     # nn.ReLU(), 
+        #     # Conv2d(32, 32, 3, bn="batch")
+        #     # Conv2d(in_channels, in_channels, 3, bn="batch"), 
+        #     # Conv2d(in_channels, in_channels, 3, bn="batch"), 
+        #     # Conv2d(in_channels, in_channels, 3, bn="batch"), 
+        #     # Conv2d(in_channels, in_channels, 3, bn="batch")
+        #     # Conv2d(in_channels, 64, 3, stride=1, bn=None, activate=None), 
+        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+        #     Conv2d(in_channels, 64, 3, stride=2, bn=None, activate="relu"), 
+        #     Conv2d(64, 128, 3, stride=2, bn=None, activate="relu"), 
+        #     Conv2d(128, 256, 3, stride=2, bn=None, activate="relu"), 
+        #     Conv2d(256, 512, 3, stride=2, bn=None, activate="relu"), 
+        #     Conv2d(512, 1024, 3, stride=1, bn=None, activate="relu"), 
+        #     Conv2d(1024, 1024, 3, stride=1, bn=None, activate="relu"), 
+        #     Conv2d(1024, 1024, 3, stride=1, bn=None, activate="relu"), 
+        # )
 
-        # self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=in_channels)
-        self.param_predictor = EmitLineParamPredictor(fix_steps=3600, in_channels=64)
+        # self.param_predictor = EmitLineParamPredictor(fix_steps=SAMPLE_COUNT, in_channels=in_channels)
+        self.param_predictor = EmitLineParamPredictor(fix_steps=SAMPLE_COUNT, in_channels=512)
 
     def process(self, x: torch.Tensor, params: torch.Tensor):
         b, c, h, w = x.shape
@@ -159,7 +177,7 @@ class EmitLinePredictor(nn.Module):
         }
         feature_points = []
         # Weight
-        params[:, :4] = params[:, :4] / 10
+        params[:, :4] = params[:, :4] / VALUE_WEIGHT
         for i, (cx, cy, rx, ry, step) in enumerate(params):
         # for i, (cx, cy, rx, ry) in enumerate(params):
             # print(cx, cy, rx, ry, step)
@@ -176,7 +194,7 @@ class EmitLinePredictor(nn.Module):
             ellipse_pts = ellipse_pts.to(x.device)
             # 1 * C * H * W
             # 'bilinear' | 'nearest' | 'bicubic'
-            sample_pts = grid_sample(x[i][None], ellipse_pts, mode='bicubic')
+            sample_pts = grid_sample(x[i][None], ellipse_pts, mode='bilinear')
             # 1 * C * 1 * N
             sample_pts = sample_pts.squeeze()
             # N * C
