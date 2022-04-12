@@ -145,13 +145,13 @@ def compute_ellipse_pt_loss(preds, gt_targets):
     # trig_loss = trig_loss + compute_dice_loss(pred_triggers[:, 1], loss_target_trig) * 2
     trig_loss = trig_loss * 2
     # param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx])
-    param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx], reduction='mean') + F.l1_loss(pred_line_params[non_trig_idx], loss_target_param[non_trig_idx], reduction='mean')
-    # param_normal_loss = F.l1_loss(pred_line_params[trig_idx][:, :3], loss_target_param[trig_idx][:, :3], reduction='mean') + F.l1_loss(pred_line_params[non_trig_idx][:, :3], loss_target_param[non_trig_idx][:, :3], reduction='mean')
+    # param_loss = F.l1_loss(pred_line_params[trig_idx], loss_target_param[trig_idx], reduction='mean') + F.l1_loss(pred_line_params[non_trig_idx], loss_target_param[non_trig_idx], reduction='mean')
+    param_normal_loss = F.l1_loss(pred_line_params[trig_idx][:, :3], loss_target_param[trig_idx][:, :3], reduction='mean') + F.l1_loss(pred_line_params[non_trig_idx][:, :3], loss_target_param[non_trig_idx][:, :3], reduction='mean')
     # param_length_loss = torch.sqrt(torch.square(pred_line_params[trig_idx][:, 3] - loss_target_param[trig_idx][:, 3]))
     # param_length_loss = torch.sum(param_length_loss / (torch.sum(param_length_loss > 1e-2) + 1))
     # param_length_loss = param_length_loss
-    # param_length_loss = F.mse_loss(pred_line_params[trig_idx][:, 3], loss_target_param[trig_idx][:, 3], reduction='mean')
-    # param_loss = param_length_loss + param_normal_loss
+    param_length_loss = F.mse_loss(pred_line_params[trig_idx][:, 3], loss_target_param[trig_idx][:, 3], reduction='mean') + F.l1_loss(pred_line_params[trig_idx][:, 3], loss_target_param[trig_idx][:, 3], reduction='mean')
+    param_loss = param_length_loss + param_normal_loss
     loss = trig_loss + param_loss
     return loss
 

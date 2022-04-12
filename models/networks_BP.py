@@ -22,22 +22,20 @@ class ContentEndoer(nn.Module):
         # resnet = resnet50(pretrained=True)
         # self.backbone = nn.Sequential(*list(resnet.children())[:-2])
         # backbone = resnet_fpn_backbone('resnet50', True)
-        backbone = densenet121()
-        self.out_channels = 1024
-        # self.convs = nn.Sequential(
-        #     Conv2d(3, 32, 5), 
-        #     Conv2d(32, 64, 5, stride=2), 
-        #     Conv2d(64, 128, 5, stride=2), 
-        #     # deepcopy(resnet.layer1), # 256
-        #     # deepcopy(resnet.layer2), # 512
-        #     # deepcopy(resnet.layer3), # 1024
-        #     # deepcopy(resnet.layer4), # 2048
-        #     Conv2d(128, self.out_channels, 3, stride=2),  
-        #     Conv2d(self.out_channels, self.out_channels, 3, stride=2),
-        #     Conv2d(self.out_channels, self.out_channels, 3),
-        #     Conv2d(self.out_channels, self.out_channels, 3)
-        # )
-        self.convs = nn.Sequential(torch.nn.Sequential(*list(backbone.children())[:-1]))
+        self.out_channels = 128
+        self.convs = nn.Sequential(
+            Conv2d(3, 32, 5), 
+            Conv2d(32, 64, 5, stride=2), 
+            Conv2d(64, 128, 5, stride=2), 
+            # deepcopy(resnet.layer1), # 256
+            # deepcopy(resnet.layer2), # 512
+            # deepcopy(resnet.layer3), # 1024
+            # deepcopy(resnet.layer4), # 2048
+            Conv2d(128, self.out_channels, 3, stride=2),  
+            Conv2d(self.out_channels, self.out_channels, 3, stride=2),
+            Conv2d(self.out_channels, self.out_channels, 3),
+            Conv2d(self.out_channels, self.out_channels, 3)
+        )
 
     def forward(self, x: torch.Tensor):
         x = self.convs(x)
@@ -46,11 +44,11 @@ class ContentEndoer(nn.Module):
 class EllipseParamPredictor(nn.Module):
     def __init__(self, in_channels=256):
         super().__init__()
-        # self.convs = nn.Sequential(
-        #     Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
-        #     Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
-        #     Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
-        # )
+        self.convs = nn.Sequential(
+            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
+            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
+            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
+        )
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fcs = nn.Sequential(
             Linear(in_channels, in_channels, activate=None), 
@@ -65,9 +63,38 @@ class EllipseParamPredictor(nn.Module):
         x = self.fcs(x)
         return x
 
+class ValueEncoder(nn.Module):
+    def __init__(self, in_channels, out_channels, fix_steps=SAMPLE_COUNT):
+        super().__init__()
+        self.out_channels = 128
+        self.fcs = nn.Sequential(
+            Linear(in_channels, 64, activate=None), 
+            Linear(64, 128, activate=None), 
+            Linear(128, 256, activate=None), 
+            Linear(256, out_channels, activate=None)
+        )
+        self.attns = nn.Sequential(
+            SelfAttentionBlock(fix_steps), 
+            SelfAttentionBlock(fix_steps), 
+            SelfAttentionBlock(fix_steps)
+        )
+
+    def forward(self, x: torch.Tensor):
+        b, c, h, w = x.size(0), x.size(1), x.size(2), x.size(3)
+        x = x.reshape(b * c, h * w)
+        # from embeded channel to output channel.
+        x = self.fcs(x)
+        x = x.reshape(b, c, -1, w)
+        # attention between point ans point.
+        x = self.attns(x)
+        return x  
+
 class EmitLineParamPredictor(nn.Module):
     def __init__(self, fix_steps=SAMPLE_COUNT, in_channels=256):
         super().__init__()
+        self.embed_size = 5 + 3
+        self.value_encoder = ValueEncoder(self.embed_size, in_channels, fix_steps=fix_steps)
+
         self.batch_attention_a = nn.Sequential(
             SelfAttentionBlock(fix_steps), 
             SelfAttentionBlock(fix_steps), 
@@ -91,8 +118,23 @@ class EmitLineParamPredictor(nn.Module):
             Linear(in_channels, 4, activate=None)
         )
     
-    def forward(self, x: torch.Tensor):
-        x = x.reshape(x.size(0), x.size(1), x.size(2), -1)
+    def forward(self, x: torch.Tensor, sample_infos: map, params: torch.Tensor):
+        x = x.reshape(x.size(0), x.size(1), x.size(2), 1)
+        # cx, cy, rx, ry
+        param_embed = params[:, :4].reshape(x.size(0), 1, -1, 1).repeat(1, x.size(1), 1, 1).to(x.device)
+        d_embed = (torch.remainder(torch.arange(0, x.size(1), 1).reshape(1, -1).repeat(x.size(0), 1), torch.round(params[:, 4]).reshape(-1, 1)) == 0).to(dtype=x.dtype, device=x.device)
+        d_embed = d_embed.reshape(x.size(0), x.size(1), 1, 1)
+        info_pts = torch.stack(sample_infos["sample"], dim=0)
+        known_line_param_embeded = torch.cat(
+            # dpx, dpy, radian
+            [info_pts[:, :, 2], info_pts[:, :, 3], info_pts[:, :, 5]], 
+            dim=-1) # (B * PT * 3)
+        known_line_param_embeded = known_line_param_embeded.reshape(x.size(0), x.size(1), -1, 1).to(x.device)
+        # x = torch.cat([x, params, known_line_param_embeded], dim=2)
+        known_line_param_embeded = torch.cat([param_embed, d_embed, known_line_param_embeded], dim=2)
+        known_line_param_embeded = self.value_encoder(known_line_param_embeded)
+
+        x = x + known_line_param_embeded
 
         x_a = self.batch_attention_a(x)
         x_a = x_a.reshape(x_a.size(0) * x_a.size(1), x_a.size(2))
@@ -121,7 +163,7 @@ def sample_points_ellipse(cx, cy, rx, ry, step, image_size):
     tmp_dpys = dpxs * torch.sin(rot_fix) + dpys * torch.cos(rot_fix)
     dpxs = tmp_dpxs
     dpys = tmp_dpys
-    samples = torch.stack([pxs, pys, dpxs, dpys, ds], dim=-1)
+    samples = torch.stack([pxs, pys, dpxs, dpys, ds, radians], dim=-1)
     samples = samples.to(dtype=torch.float)
     return samples
 
@@ -129,43 +171,41 @@ class EmitLinePredictor(nn.Module):
     def __init__(self, image_size, in_channels=256):
         super().__init__()
         self.image_size = image_size
-        backbone = densenet121()
-        self.convs = torch.nn.Sequential(*list(backbone.features.children())[:-5])
-        # self.convs = nn.Sequential(
-        #     # Conv2d(in_channels, 128, 3, bn="batch"), 
-        #     # nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1), 
-        #     # nn.BatchNorm2d(64, track_running_stats=False), 
-        #     # nn.ReLU(), 
-        #     # nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1), 
-        #     # nn.BatchNorm2d(32, track_running_stats=False), 
-        #     # nn.ReLU(), 
-        #     # nn.ConvTranspose2d(32, 32, 4, stride=2, padding=1), 
-        #     # nn.BatchNorm2d(32, track_running_stats=False), 
-        #     # nn.ReLU(), 
-        #     # Conv2d(32, 32, 3, bn="batch")
-        #     # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-        #     # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-        #     # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-        #     # Conv2d(in_channels, in_channels, 3, bn="batch")
-        #     # Conv2d(in_channels, 64, 3, stride=1, bn=None, activate=None), 
-        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-        #     # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-        #     Conv2d(in_channels, 64, 3, stride=2, bn=None, activate="relu"), 
-        #     Conv2d(64, 128, 3, stride=2, bn=None, activate="relu"), 
-        #     Conv2d(128, 256, 3, stride=2, bn=None, activate="relu"), 
-        #     Conv2d(256, 512, 3, stride=2, bn=None, activate="relu"), 
-        #     Conv2d(512, 1024, 3, stride=1, bn=None, activate="relu"), 
-        #     Conv2d(1024, 1024, 3, stride=1, bn=None, activate="relu"), 
-        #     Conv2d(1024, 1024, 3, stride=1, bn=None, activate="relu"), 
-        # )
+        self.convs = nn.Sequential(
+            # Conv2d(in_channels, 128, 3, bn="batch"), 
+            # nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1), 
+            # nn.BatchNorm2d(64, track_running_stats=False), 
+            # nn.ReLU(), 
+            # nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1), 
+            # nn.BatchNorm2d(32, track_running_stats=False), 
+            # nn.ReLU(), 
+            # nn.ConvTranspose2d(32, 32, 4, stride=2, padding=1), 
+            # nn.BatchNorm2d(32, track_running_stats=False), 
+            # nn.ReLU(), 
+            # Conv2d(32, 32, 3, bn="batch")
+            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
+            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
+            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
+            # Conv2d(in_channels, in_channels, 3, bn="batch")
+            # Conv2d(in_channels, 64, 3, stride=1, bn=None, activate=None), 
+            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
+            Conv2d(in_channels, 64, 3, stride=2, bn=None, activate="relu"), 
+            Conv2d(64, 128, 3, stride=2, bn=None, activate="relu"), 
+            Conv2d(128, 256, 3, stride=2, bn=None, activate="relu"), 
+            Conv2d(256, 512, 3, stride=2, bn=None, activate="relu"), 
+            Conv2d(512, 1024, 3, stride=1, bn=None, activate="relu"), 
+            Conv2d(1024, 1024, 3, stride=1, bn=None, activate="relu"), 
+            Conv2d(1024, 1024, 3, stride=1, bn=None, activate="relu"), 
+        )
 
         # self.param_predictor = EmitLineParamPredictor(fix_steps=SAMPLE_COUNT, in_channels=in_channels)
-        self.param_predictor = EmitLineParamPredictor(fix_steps=SAMPLE_COUNT, in_channels=512)
+        self.param_predictor = EmitLineParamPredictor(fix_steps=SAMPLE_COUNT, in_channels=1024)
 
     def process(self, x: torch.Tensor, params: torch.Tensor):
         b, c, h, w = x.shape
@@ -176,8 +216,6 @@ class EmitLinePredictor(nn.Module):
             "sample": [], 
         }
         feature_points = []
-        # Weight
-        params[:, :4] = params[:, :4] / VALUE_WEIGHT
         for i, (cx, cy, rx, ry, step) in enumerate(params):
         # for i, (cx, cy, rx, ry) in enumerate(params):
             # print(cx, cy, rx, ry, step)
@@ -208,10 +246,12 @@ class EmitLinePredictor(nn.Module):
     
     def forward(self, x: torch.Tensor, params: torch.Tensor):
         x = self.convs(x)
-        # Sample points on feature map. (batch, pt, in_channel(256)) -> (batch * pt, in_channel(256)).
+        # Weight
+        params[:, :4] = params[:, :4] / VALUE_WEIGHT
+        # Sample points on feature map. (batch, pt, in_channel(256)).
         feature_pts, sample_infos = self.process(x, params) 
         # Do predict.
-        if_triggers, line_params = self.param_predictor(feature_pts) 
+        if_triggers, line_params = self.param_predictor(feature_pts, sample_infos, params) 
         if_triggers = if_triggers.split(sample_infos["size"], 0)
         line_params = line_params.split(sample_infos["size"], 0)
         return if_triggers, line_params, sample_infos
