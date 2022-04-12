@@ -27,7 +27,10 @@ def train(args, epoch, iterations, net, optim, train_loader):
     
     count = 0
     avg_loss = {
-        "loss_ellipse_param": 0,
+        # "loss_ellipse_param": 0,
+        "loss_cx": 0, 
+        "loss_cy": 0, 
+        "loss_rest": 0, 
         "trig_loss": 0, 
         "param_loss": 0, 
         # "loss_emit_line_param": 0, 
@@ -53,6 +56,10 @@ def train(args, epoch, iterations, net, optim, train_loader):
 
         p1_targets = torch.stack([gt_target["phase1"] for gt_target in targets], dim=0)
         loss_ellipse_param = compute_ellipse_param_loss(pred_ellipse_params, p1_targets)
+        loss_cx = loss_ellipse_param["loss_cx"]
+        loss_cy = loss_ellipse_param["loss_cy"]
+        loss_rest = loss_ellipse_param["loss_rest"]
+        loss_ellipse_param = loss_cx + loss_cy + loss_rest
 
         p2_targets = torch.stack([gt_target["phase2"] for gt_target in targets], dim=0)
         loss_emit_line_param = compute_ellipse_pt_loss(preds, p2_targets)
@@ -76,7 +83,10 @@ def train(args, epoch, iterations, net, optim, train_loader):
         
         with torch.no_grad():
             next_count = count + imgs.size(0)
-            avg_loss["loss_ellipse_param"] = (avg_loss["loss_ellipse_param"] * count + loss_ellipse_param.item()) / next_count
+            # avg_loss["loss_ellipse_param"] = (avg_loss["loss_ellipse_param"] * count + loss_ellipse_param.item()) / next_count
+            avg_loss["loss_cx"] = (avg_loss["loss_cx"] * count + loss_cx.item()) / next_count
+            avg_loss["loss_cy"] = (avg_loss["loss_cy"] * count + loss_cy.item()) / next_count
+            avg_loss["loss_rest"] = (avg_loss["loss_rest"] * count + loss_rest.item()) / next_count
             avg_loss["trig_loss"] = (avg_loss["trig_loss"] * count + trig_loss.item()) / next_count
             avg_loss["param_loss"] = (avg_loss["param_loss"] * count + param_loss.item()) / next_count
             # avg_loss["loss_emit_line_param"] = (avg_loss["loss_emit_line_param"] * count + loss_emit_line_param.item()) / next_count

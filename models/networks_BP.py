@@ -45,12 +45,13 @@ class EllipseParamPredictor(nn.Module):
     def __init__(self, in_channels=256):
         super().__init__()
         self.convs = nn.Sequential(
-            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
-            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
-            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate=None), 
+            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate="lrelu"), 
+            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate="lrelu"), 
+            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate="lrelu"), 
         )
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fcs = nn.Sequential(
+            Linear(in_channels, in_channels, activate=None), 
             Linear(in_channels, in_channels, activate=None), 
             # For cx, cy, rx, ry, step.
             Linear(in_channels, 5, activate=None), 
