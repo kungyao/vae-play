@@ -177,40 +177,17 @@ class EmitLinePredictor(nn.Module):
         super().__init__()
         self.image_size = image_size
         self.convs = nn.Sequential(
-            # Conv2d(in_channels, 128, 3, bn="batch"), 
-            # nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1), 
-            # nn.BatchNorm2d(64, track_running_stats=False), 
-            # nn.ReLU(), 
-            # nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1), 
-            # nn.BatchNorm2d(32, track_running_stats=False), 
-            # nn.ReLU(), 
-            # nn.ConvTranspose2d(32, 32, 4, stride=2, padding=1), 
-            # nn.BatchNorm2d(32, track_running_stats=False), 
-            # nn.ReLU(), 
-            # Conv2d(32, 32, 3, bn="batch")
-            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            # Conv2d(in_channels, in_channels, 3, bn="batch"), 
-            # Conv2d(in_channels, in_channels, 3, bn="batch")
-            # Conv2d(in_channels, 64, 3, stride=1, bn=None, activate=None), 
-            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-            # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
             Conv2d(in_channels, 64, 3, stride=2, bn=None, activate="lrelu"), 
             Conv2d(64, 128, 3, stride=2, bn=None, activate="lrelu"), 
             Conv2d(128, 256, 3, stride=2, bn=None, activate="lrelu"), 
             Conv2d(256, 512, 3, stride=2, bn=None, activate="lrelu"), 
-            Conv2d(512, 1024, 3, stride=1, bn=None, activate="lrelu"), 
-            Conv2d(1024, 1024, 3, stride=1, bn=None, activate="lrelu"), 
-            Conv2d(1024, 1024, 3, stride=1, bn=None, activate="lrelu"), 
+            Conv2d(512, 1024, 3, stride=2, bn=None, activate="lrelu"), 
+            Conv2d(1024, 2048, 3, stride=1, bn=None, activate="lrelu"), 
+            Conv2d(2048, 2048, 3, stride=1, bn=None, activate="lrelu"), 
         )
 
         # self.param_predictor = EmitLineParamPredictor(fix_steps=SAMPLE_COUNT, in_channels=in_channels)
-        self.param_predictor = EmitLineParamPredictor(fix_steps=SAMPLE_COUNT, in_channels=1024)
+        self.param_predictor = EmitLineParamPredictor(fix_steps=SAMPLE_COUNT, in_channels=2048)
 
     def process(self, x: torch.Tensor, params: torch.Tensor):
         b, c, h, w = x.shape
