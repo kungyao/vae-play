@@ -28,8 +28,10 @@ def train(args, epoch, iterations, net, optim, train_loader):
     count = 0
     avg_loss = {
         "loss_ellipse_param": 0,
-        "loss_emit_line_param": 0, 
-        "loss_emit_line_param_pos_ellipse_param": 0
+        "trig_loss": 0, 
+        "param_loss": 0, 
+        # "loss_emit_line_param": 0, 
+        # "loss_emit_line_param_pos_ellipse_param": 0
     }
 
     train_iter = iter(train_loader)
@@ -54,6 +56,9 @@ def train(args, epoch, iterations, net, optim, train_loader):
 
         p2_targets = torch.stack([gt_target["phase2"] for gt_target in targets], dim=0)
         loss_emit_line_param = compute_ellipse_pt_loss(preds, p2_targets)
+        trig_loss = loss_emit_line_param["trig_loss"]
+        param_loss = loss_emit_line_param["param_loss"]
+        loss_emit_line_param = trig_loss + param_loss
 
         # p1_targets[:, :4] = p1_targets[:, :4] * 10
         # if_triggers, line_params, sample_infos = net.emit_line_predictor(imgs, p1_targets)
@@ -72,7 +77,9 @@ def train(args, epoch, iterations, net, optim, train_loader):
         with torch.no_grad():
             next_count = count + imgs.size(0)
             avg_loss["loss_ellipse_param"] = (avg_loss["loss_ellipse_param"] * count + loss_ellipse_param.item()) / next_count
-            avg_loss["loss_emit_line_param"] = (avg_loss["loss_emit_line_param"] * count + loss_emit_line_param.item()) / next_count
+            avg_loss["trig_loss"] = (avg_loss["trig_loss"] * count + trig_loss.item()) / next_count
+            avg_loss["param_loss"] = (avg_loss["param_loss"] * count + param_loss.item()) / next_count
+            # avg_loss["loss_emit_line_param"] = (avg_loss["loss_emit_line_param"] * count + loss_emit_line_param.item()) / next_count
             # avg_loss["loss_emit_line_param_pos_ellipse_param"] = (avg_loss["loss_emit_line_param_pos_ellipse_param"] * count + loss_emit_line_param_pos_ellipse_param.item()) / next_count
             count = next_count
 

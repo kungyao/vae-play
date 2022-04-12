@@ -152,8 +152,11 @@ def compute_ellipse_pt_loss(preds, gt_targets):
     # param_length_loss = param_length_loss
     param_length_loss = F.mse_loss(pred_line_params[trig_idx][:, 3], loss_target_param[trig_idx][:, 3], reduction='mean') + F.l1_loss(pred_line_params[trig_idx][:, 3], loss_target_param[trig_idx][:, 3], reduction='mean')
     param_loss = param_length_loss + param_normal_loss
-    loss = trig_loss + param_loss
-    return loss
+    # loss = trig_loss + param_loss
+    return {
+        "trig_loss":  trig_loss,
+        "param_loss":  param_loss
+    }
 
 def compute_hinge_loss(logit, mode):
     assert mode in ['d_real', 'd_fake', 'g']

@@ -101,8 +101,8 @@ class EmitLineParamPredictor(nn.Module):
             SelfAttentionBlock(fix_steps)
         )
         self.trigger_pred = nn.Sequential(
-            Linear(in_channels, in_channels, activate=None), 
-            Linear(in_channels, in_channels, activate=None), 
+            Linear(in_channels, in_channels, activate='lrelu'), 
+            Linear(in_channels, in_channels, activate='lrelu'), 
             Linear(in_channels, 2, activate=None)
         )
 
@@ -111,9 +111,13 @@ class EmitLineParamPredictor(nn.Module):
             SelfAttentionBlock(fix_steps), 
             SelfAttentionBlock(fix_steps)
         )
+        # -10~10
+        # -10~10
+        # -1~1
+        # 0~20
         # offset_x, offset_y, theta, length
         self.params_pred = nn.Sequential(
-            Linear(in_channels, in_channels, activate=None), 
+            Linear(in_channels, in_channels, activate='lrelu'), 
             Linear(in_channels, in_channels, activate=None), 
             Linear(in_channels, 4, activate=None)
         )
@@ -195,13 +199,13 @@ class EmitLinePredictor(nn.Module):
             # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
             # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
             # Conv2d(64, 64, 3, stride=1, bn=None, activate=None), 
-            Conv2d(in_channels, 64, 3, stride=2, bn=None, activate="relu"), 
-            Conv2d(64, 128, 3, stride=2, bn=None, activate="relu"), 
-            Conv2d(128, 256, 3, stride=2, bn=None, activate="relu"), 
-            Conv2d(256, 512, 3, stride=2, bn=None, activate="relu"), 
-            Conv2d(512, 1024, 3, stride=1, bn=None, activate="relu"), 
-            Conv2d(1024, 1024, 3, stride=1, bn=None, activate="relu"), 
-            Conv2d(1024, 1024, 3, stride=1, bn=None, activate="relu"), 
+            Conv2d(in_channels, 64, 3, stride=2, bn=None, activate="lrelu"), 
+            Conv2d(64, 128, 3, stride=2, bn=None, activate="lrelu"), 
+            Conv2d(128, 256, 3, stride=2, bn=None, activate="lrelu"), 
+            Conv2d(256, 512, 3, stride=2, bn=None, activate="lrelu"), 
+            Conv2d(512, 1024, 3, stride=1, bn=None, activate="lrelu"), 
+            Conv2d(1024, 1024, 3, stride=1, bn=None, activate="lrelu"), 
+            Conv2d(1024, 1024, 3, stride=1, bn=None, activate="lrelu"), 
         )
 
         # self.param_predictor = EmitLineParamPredictor(fix_steps=SAMPLE_COUNT, in_channels=in_channels)
