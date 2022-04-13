@@ -75,20 +75,21 @@ def train(args, epoch, iterations, net, optim, train_loader):
         losses.backward()
         optim.step()
 
-        # p1_targets[:, :4] = p1_targets[:, :4] * VALUE_WEIGHT
-        # if_triggers, line_params, sample_infos = net.emit_line_predictor(imgs, p1_targets)
-        # preds_p2_only = {}
-        # preds_p2_only.update(if_triggers=if_triggers)
-        # preds_p2_only.update(line_params=line_params)
-        # preds_p2_only.update(sample_infos=sample_infos)
-        # loss_emit_line_param_pos_ellipse_param = compute_ellipse_pt_loss(preds_p2_only, p2_targets)
-        # pos_trig_loss = loss_emit_line_param_pos_ellipse_param["trig_loss"]
-        # pos_param_loss = loss_emit_line_param_pos_ellipse_param["param_loss"]
-        # loss_emit_line_param_pos_ellipse_param = pos_trig_loss + pos_param_loss
+        p1_targets[:, :4] = p1_targets[:, :4] * VALUE_WEIGHT
+        if_triggers, line_params, sample_infos = net.emit_line_predictor(imgs, p1_targets)
+        preds_p2_only = {}
+        preds_p2_only.update(if_triggers=if_triggers)
+        preds_p2_only.update(line_params=line_params)
+        preds_p2_only.update(sample_infos=sample_infos)
+        loss_emit_line_param_pos_ellipse_param = compute_ellipse_pt_loss(preds_p2_only, p2_targets)
+        pos_trig_loss = loss_emit_line_param_pos_ellipse_param["trig_loss"]
+        pos_param_loss = loss_emit_line_param_pos_ellipse_param["param_loss"]
+        loss_emit_line_param_pos_ellipse_param = pos_trig_loss + pos_param_loss
+        # loss_emit_line_param_pos_ellipse_param *= 0.5
 
-        # optim.zero_grad()
-        # loss_emit_line_param_pos_ellipse_param.backward()
-        # optim.step()
+        optim.zero_grad()
+        loss_emit_line_param_pos_ellipse_param.backward()
+        optim.step()
 
         with torch.no_grad():
             next_count = count + imgs.size(0)
