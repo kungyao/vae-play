@@ -102,6 +102,7 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
 
     if c == 3:
         imgs = imgs[:, 0, :, :].reshape(b, 1, h, w)
+        bmasks = bmasks[:, 0, :, :].reshape(b, 1, h, w)
         ellipses = ellipses[:, 0, :, :].reshape(b, 1, h, w)
 
     pred_ellipse_params = predictions["ellipse_params"]

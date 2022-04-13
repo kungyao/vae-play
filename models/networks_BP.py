@@ -22,7 +22,7 @@ class ContentEndoer(nn.Module):
         # resnet = resnet50(pretrained=True)
         # self.backbone = nn.Sequential(*list(resnet.children())[:-2])
         # backbone = resnet_fpn_backbone('resnet50', True)
-        self.out_channels = 128
+        self.out_channels = 256
         self.convs = nn.Sequential(
             Conv2d(3, 32, 5), 
             Conv2d(32, 64, 5, stride=2), 
@@ -45,9 +45,9 @@ class EllipseParamPredictor(nn.Module):
     def __init__(self, in_channels=256):
         super().__init__()
         self.convs = nn.Sequential(
-            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate="lrelu"), 
-            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate="lrelu"), 
-            Conv2d(in_channels, in_channels, 3, stride=2, bn="batch", activate="lrelu"), 
+            Conv2d(in_channels, in_channels, 3, stride=2, bn=None, activate="lrelu"), 
+            Conv2d(in_channels, in_channels, 3, stride=2, bn=None, activate="lrelu"), 
+            Conv2d(in_channels, in_channels, 3, stride=2, bn=None, activate="lrelu"), 
         )
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fcs = nn.Sequential(
@@ -247,12 +247,12 @@ class ComposeNet(nn.Module):
         # self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=self.encoder.out_channels)
         self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=3)
 
-    def forward(self, x):
+    def forward(self, x_base, x_attr):
         # x = self.add_coord(x)
         # x = self.encoder(x)
         # ellipse_params = self.ellipse_predictor(x)
-        ellipse_params = self.ellipse_predictor(self.encoder(x))
-        if_triggers, line_params, sample_infos = self.emit_line_predictor(x, ellipse_params.detach().cpu())
+        ellipse_params = self.ellipse_predictor(self.encoder(x_base))
+        if_triggers, line_params, sample_infos = self.emit_line_predictor(x_attr, ellipse_params.detach().cpu())
         output = {}
         output.update(ellipse_params=ellipse_params)
         output.update(if_triggers=if_triggers)

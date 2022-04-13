@@ -406,6 +406,8 @@ class BPDataset(Dataset):
         # 
         img = TF.to_tensor(img)
         bmask = TF.to_tensor(mask)
+        if image_mode == "RGB":
+            bmask = bmask.repeat(3, 1, 1)
         ellipse = TF.to_tensor(ellipse)
         target["phase1"] = torch.FloatTensor(phase1)
         target["phase2"] = torch.FloatTensor(phase2)

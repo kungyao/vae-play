@@ -49,11 +49,11 @@ def train(args, epoch, iterations, net, optim, train_loader):
 
         b = imgs.size(0)
         imgs = imgs.cuda(args.gpu)
-        # bmasks = bmasks.cuda(args.gpu)
-        ellipses = ellipses.cuda(args.gpu)
+        bmasks = bmasks.cuda(args.gpu)
+        # ellipses = ellipses.cuda(args.gpu)
         # targets = [{k: v.cuda(args.gpu) for k, v in t.items()} for t in targets]
 
-        preds = net(imgs)
+        preds = net(bmasks, imgs - bmasks)
         pred_ellipse_params = preds["ellipse_params"]
 
         p1_targets = torch.stack([gt_target["phase1"] for gt_target in targets], dim=0)
@@ -76,7 +76,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
         optim.step()
 
         p1_targets[:, :4] = p1_targets[:, :4] * VALUE_WEIGHT
-        if_triggers, line_params, sample_infos = net.emit_line_predictor(imgs, p1_targets)
+        if_triggers, line_params, sample_infos = net.emit_line_predictor(imgs - bmasks, p1_targets)
         preds_p2_only = {}
         preds_p2_only.update(if_triggers=if_triggers)
         preds_p2_only.update(line_params=line_params)
@@ -111,7 +111,8 @@ def train(args, epoch, iterations, net, optim, train_loader):
                     res_str += f"{key}: {round(avg_loss[key], 6)}; "
                 print(res_str)
                 imgs = imgs.cpu()
-                ellipses = ellipses.cpu()
+                bmasks = bmasks.cpu()
+                # ellipses = ellipses.cpu()
                 save_test_batch(imgs, bmasks, ellipses, targets, preds, args.res_output, f"{epoch}_{i+1}")
     return
 
