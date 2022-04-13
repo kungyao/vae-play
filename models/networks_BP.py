@@ -248,12 +248,12 @@ class ComposeNet(nn.Module):
         # self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=self.encoder.out_channels)
         self.emit_line_predictor = EmitLinePredictor(image_size, in_channels=3)
 
-    def forward(self, x_base, x_attr):
+    def forward(self, x):
         # x = self.add_coord(x)
         # x = self.encoder(x)
         # ellipse_params = self.ellipse_predictor(x)
-        ellipse_params = self.ellipse_predictor(self.encoder(x_base))
-        if_triggers, line_params, sample_infos = self.emit_line_predictor(x_attr, ellipse_params.detach().cpu())
+        ellipse_params = self.ellipse_predictor(self.encoder(x))
+        if_triggers, line_params, sample_infos = self.emit_line_predictor(x, ellipse_params.detach().cpu())
         output = {}
         output.update(ellipse_params=ellipse_params)
         output.update(if_triggers=if_triggers)

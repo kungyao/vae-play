@@ -53,7 +53,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
         # ellipses = ellipses.cuda(args.gpu)
         # targets = [{k: v.cuda(args.gpu) for k, v in t.items()} for t in targets]
 
-        preds = net(bmasks, imgs)
+        preds = net(imgs)
         pred_ellipse_params = preds["ellipse_params"]
 
         p1_targets = torch.stack([gt_target["phase1"] for gt_target in targets], dim=0)
