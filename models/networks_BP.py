@@ -24,9 +24,9 @@ class ContentEndoer(nn.Module):
         # backbone = resnet_fpn_backbone('resnet50', True)
         self.out_channels = 256
         self.convs = nn.Sequential(
-            Conv2d(3, 32, 5), 
-            Conv2d(32, 64, 5, stride=2), 
-            Conv2d(64, 128, 5, stride=2), 
+            Conv2d(3, 32, 3), 
+            Conv2d(32, 64, 3), 
+            Conv2d(64, 128, 3, stride=2), 
             # deepcopy(resnet.layer1), # 256
             # deepcopy(resnet.layer2), # 512
             # deepcopy(resnet.layer3), # 1024
@@ -49,10 +49,11 @@ class EllipseParamPredictor(nn.Module):
             Conv2d(in_channels, in_channels, 3, stride=2, bn=None, activate="lrelu"), 
             Conv2d(in_channels, in_channels, 3, stride=2, bn=None, activate="lrelu"), 
         )
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        final_size = 4
+        self.avgpool = nn.AdaptiveAvgPool2d((final_size, final_size))
         self.fcs = nn.Sequential(
-            Linear(in_channels, in_channels, activate=None), 
-            Linear(in_channels, in_channels, activate=None), 
+            Linear(in_channels*final_size*final_size, in_channels*final_size, activate=None), 
+            Linear(in_channels*final_size, in_channels, activate=None), 
             # For cx, cy, rx, ry, step.
             Linear(in_channels, 5, activate=None), 
         )

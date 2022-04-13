@@ -70,8 +70,8 @@ def compute_ellipse_param_loss(preds, gt_targets):
     # Weight
     gt_targets[:, :4] = gt_targets[:, :4] * VALUE_WEIGHT
     # loss = F.l1_loss(preds, gt_targets)
-    loss_cx = F.l1_loss(preds[:, 0], gt_targets[:, 0]) * 2
-    loss_cy = F.l1_loss(preds[:, 1], gt_targets[:, 1]) * 2
+    loss_cx = F.l1_loss(preds[:, 0], gt_targets[:, 0])
+    loss_cy = F.l1_loss(preds[:, 1], gt_targets[:, 1])
     loss_rest = F.l1_loss(preds[:, 2:], gt_targets[:, 2:])
     # print(preds, gt_targets)
     return {
