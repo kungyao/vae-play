@@ -24,14 +24,14 @@ class ContentEndoer(nn.Module):
         # backbone = resnet_fpn_backbone('resnet50', True)
         self.out_channels = 256
         self.convs = nn.Sequential(
-            Conv2d(3, 32, 3), 
-            Conv2d(32, 64, 3), 
-            Conv2d(64, 128, 3, stride=2), 
+            Conv2d(3, 64, 3), 
+            Conv2d(64, 128, 3), 
+            Conv2d(128, 256, 3, stride=2), 
             # deepcopy(resnet.layer1), # 256
             # deepcopy(resnet.layer2), # 512
             # deepcopy(resnet.layer3), # 1024
             # deepcopy(resnet.layer4), # 2048
-            Conv2d(128, self.out_channels, 3, stride=2),  
+            Conv2d(256, self.out_channels, 3, stride=2),  
             Conv2d(self.out_channels, self.out_channels, 3, stride=2),
             Conv2d(self.out_channels, self.out_channels, 3),
             Conv2d(self.out_channels, self.out_channels, 3)

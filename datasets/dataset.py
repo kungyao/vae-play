@@ -369,8 +369,7 @@ class BPDataset(Dataset):
         return len(self.imgs)
 
     def __getitem__(self, idx):
-        image_mode = "RGB" # "L"
-        img = Image.open(self.imgs[idx], "r").convert(image_mode)
+        img = Image.open(self.imgs[idx], "r").convert("L")
         # scale = self.img_size / img.height
         scale = 1 / img.height
         img = img.resize((self.img_size, self.img_size)) # , resample=Image.NEAREST
@@ -380,9 +379,10 @@ class BPDataset(Dataset):
         mask = np.array(mask)
         bg = np.where((mask[:,:,0]==255) & (mask[:,:,1]==255) & (mask[:,:,2]==255))
         mask[bg] = (0, 0, 0)
-        mask = mask[:, :, 0]
+        bmask = mask[:, :, 0]
+        emask = mask[:, :, 1]
 
-        ellipse = Image.open(self.ellipses[idx], "r").convert(image_mode)
+        ellipse = Image.open(self.ellipses[idx], "r").convert("RGB")
         ellipse = ellipse.resize((self.img_size, self.img_size)) # , resample=Image.NEAREST
         data = self.infos[idx]
         target = {}
@@ -405,9 +405,11 @@ class BPDataset(Dataset):
         # phase2[:, 6] = phase2[:, 6]
         # 
         img = TF.to_tensor(img)
-        bmask = TF.to_tensor(mask)
-        if image_mode == "RGB":
-            bmask = bmask.repeat(3, 1, 1)
+        bmask = TF.to_tensor(bmask)
+        emask = TF.to_tensor(emask)
+        # 
+        img = torch.cat([img, bmask, emask], dim=0)
+        bmask = bmask.repeat(3, 1, 1)
         ellipse = TF.to_tensor(ellipse)
         target["phase1"] = torch.FloatTensor(phase1)
         target["phase2"] = torch.FloatTensor(phase2)

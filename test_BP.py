@@ -99,11 +99,9 @@ def save_target_batch(imgs, bmasks, ellipses, targets, result_path, result_name)
 
 def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, result_name):
     b, c, h, w = imgs.shape
-
-    if c == 3:
-        imgs = imgs[:, 0, :, :].reshape(b, 1, h, w)
-        bmasks = bmasks[:, 0, :, :].reshape(b, 1, h, w)
-        ellipses = ellipses[:, 0, :, :].reshape(b, 1, h, w)
+    # imgs = imgs[:, 0, :, :].reshape(b, 1, h, w)
+    bmasks = bmasks[:, 0, :, :].reshape(b, 1, h, w)
+    # ellipses = ellipses[:, 0, :, :].reshape(b, 1, h, w)
 
     pred_ellipse_params = predictions["ellipse_params"]
     # Weight
@@ -200,8 +198,8 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
             if dst >= 0 and dst < h:
                 tmp_img[0, dst, cx] = 1.0
 
-        results.append(tmp_img)
-        results_w_mask.append(tmp_bmask)
+        results.append(tmp_img.repeat(3, 1, 1))
+        results_w_mask.append(tmp_bmask.repeat(3, 1, 1))
     results = torch.stack(results, dim=0)
     results_w_mask = torch.stack(results_w_mask, dim=0)
 
