@@ -112,12 +112,15 @@ def resample_points(contour, max_points: int=256):
     l = len(contour)
     if l > max_points:
         sample_step = (l - 2) / (max_points - 2)
-        new_c = [contour[0]]
-        for i in range(max_points - 2):
-            idx = round((i + 1) * sample_step)
-            new_c.append(contour[idx])
-        new_c.append(contour[-1])
-        return np.array(new_c)
+        select = np.arange(1, max_points - 1) * sample_step
+        select = np.round(select, decimals=1)
+        select = np.concatenate([[0], select, [l-1]], axis=0)
+        # new_c = [contour[0]]
+        # for i in range(max_points - 2):
+        #     idx = round((i + 1) * sample_step)
+        #     new_c.append(contour[idx])
+        # new_c.append(contour[-1])
+        return np.array(contour[select])
     return contour
     
 def unit_vector(vector):
