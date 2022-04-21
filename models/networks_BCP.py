@@ -112,12 +112,13 @@ class ComposeNet(nn.Module):
                 contours.append(t["total"][:, :2])
             # contours = torch.stack(contours, dim=0)
         else:
-            b = x.shape[0]
+            b, c, h, w = x.shape
             size = []
             contours = []
             for i in range(b):
                 cnt = find_contour(b[i])
                 cnt = resample_points(cnt, self.max_point)
+                cnt = (cnt / h - 0.5) / 0.5
                 size.append(len(cnt))
                 contours.append(cnt)
             # contours = torch.stack(contours, dim=0)
