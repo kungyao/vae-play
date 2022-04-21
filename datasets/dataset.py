@@ -455,3 +455,60 @@ class BPDatasetTEST(Dataset):
         # img = torch.multiply(img, tmp_eimg) + (1 - tmp_eimg)
         # img = torch.multiply(img, eimg) + (1 - eimg)
         return img, bimg
+
+# Bubble Contour parameter
+class BCPDataset(Dataset):
+    def __init__(self, data_path, img_size) -> None:
+        self.layers = []
+        self.masks = []
+        self.labels = []
+        self.annotations = []
+
+        for cls_name in os.listdir(data_path):
+            cls_folder = os.path.join(data_path, cls_name)
+            layer_path = os.path.join(cls_folder, "layers")
+            mask_path = os.path.join(cls_folder, "masks")
+            anno_path = os.path.join(cls_folder, "annotations")
+
+            for name in os.listdir(layer_path):
+                name = name.split(".")[0]
+
+                self.labels.append(int(cls_name) - 1)
+                self.layers.append(os.path.join(layer_path, f"{name}.png"))
+                self.masks.append(os.path.join(mask_path, f"{name}.png"))
+
+                with open(os.path.join(anno_path, f"{name}.txt"), 'r') as fp:
+                    annotation = json.load(fp)
+                self.annotations.append(annotation)
+
+    def __len__(self):
+        return len(self.layers)
+
+    def __getitem__(self, idx):
+        mask = Image.open(self.masks[idx], "r").convert("L")
+        scale = 1 / mask.height
+
+        layer = Image.open(self.layers[idx], "r").convert("RGB")
+        layer = np.array(layer)
+        bg = np.where((layer[:,:,0]==255) & (layer[:,:,1]==255) & (layer[:,:,2]==255))
+        layer[bg] = (0, 0, 0)
+        bmask = layer[:, :, 0]
+        emask = layer[:, :, 1]
+
+        annotation = self.annotations[idx]
+        annotation["key"] = torch.tensor(annotation["key"])
+        annotation["total"] = torch.tensor(annotation["total"])
+
+        # 
+        img = TF.to_tensor(mask)
+        bmask = TF.to_tensor(bmask)
+        emask = TF.to_tensor(emask)
+        # 
+        img = torch.cat([img, bmask, emask], dim=0)
+        bmask = bmask.repeat(3, 1, 1)
+
+        annotation["key"] = (annotation["key"] * scale - 0.5) / 0.5
+        annotation["total"] = (annotation["total"] * scale - 0.5) / 0.5
+
+        return img, bmask, self.labels[idx], annotation
+
