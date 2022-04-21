@@ -13,7 +13,7 @@ except:
     from blocks import *
 from tools.utils import find_contour, resample_points
 
-VALUE_WEIGHT = 10
+VALUE_WEIGHT = 512
 
 class ContentEndoer(nn.Module):
     def __init__(self, in_channels):
@@ -60,7 +60,7 @@ class LinePredictor(nn.Module):
             normalized_pts = cnt.to(device)
             if normalized_pts.numel() != 0:
                 normalized_pts = normalized_pts.unsqueeze(0).unsqueeze(0)
-                resample = grid_sample(x[i][None], normalized_pts, mode='bicubic')
+                resample = grid_sample(x[i][None], normalized_pts, mode='bilinear')
                 resample = resample.squeeze()
                 resample = resample.permute(1, 0)
                 if self.max_point > resample.size(0):
@@ -104,7 +104,7 @@ class ComposeNet(nn.Module):
         self.line_predictor = LinePredictor(image_size, pt_size=4096, in_channels=self.encoder.out_channels)
 
     def forward(self, x, target=None):
-        if self.training:
+        if self.training and target is not None:
             size = []
             contours = []
             for t in target:
