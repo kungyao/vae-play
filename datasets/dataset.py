@@ -495,9 +495,9 @@ class BCPDataset(Dataset):
         bmask = layer[:, :, 0]
         emask = layer[:, :, 1]
 
-        annotation = self.annotations[idx]
-        annotation["key"] = torch.tensor(annotation["key"])
-        annotation["total"] = torch.tensor(annotation["total"])
+        annotation = {}
+        annotation["key"] = torch.tensor(self.annotations[idx]["key"])
+        annotation["total"] = torch.tensor(self.annotations[idx]["total"])
 
         # 
         img = TF.to_tensor(mask)
@@ -507,8 +507,8 @@ class BCPDataset(Dataset):
         img = torch.cat([img, bmask, emask], dim=0)
         bmask = bmask.repeat(3, 1, 1)
 
-        annotation["key"] = (annotation["key"] * scale - 0.5) / 0.5
-        annotation["total"] = (annotation["total"] * scale - 0.5) / 0.5
+        annotation["key"][:4] = (annotation["key"][:4] * scale - 0.5) / 0.5
+        annotation["total"][:4] = (annotation["total"][:4] * scale - 0.5) / 0.5
 
         return img, bmask, self.labels[idx], annotation
 
