@@ -106,7 +106,7 @@ def save_test_batch(imgs, bmasks, classes, contours, contour_targets, result_pat
         tmp_b = np.ascontiguousarray(tmp_b.numpy()).astype(np.uint8) * 255
         # Contour不用 /VALUE_WEIGHT
         cnt = (contours[i] * 0.5 + 0.5) * h
-        cnt_target = (contour_targets[i] / VALUE_WEIGHT * 0.5 + 0.5) * h
+        cnt_target = ((contour_targets[i] / VALUE_WEIGHT) * 0.5 + 0.5) * h
         cnt_size = len(cnt)
         if classes[i] == 1:
             for j in range(cnt_size):
