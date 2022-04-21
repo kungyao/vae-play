@@ -104,7 +104,8 @@ def save_test_batch(imgs, bmasks, classes, contours, contour_targets, result_pat
         tmp_b = bmasks[i].clone()
         tmp_b = torch.permute(tmp_b, (1, 2, 0))
         tmp_b = np.ascontiguousarray(tmp_b.numpy()).astype(np.uint8) * 255
-        cnt = (contours[i] / VALUE_WEIGHT * 0.5 + 0.5) * h
+        # Contour不用 /VALUE_WEIGHT
+        cnt = (contours[i] * 0.5 + 0.5) * h
         cnt_target = (contour_targets[i] / VALUE_WEIGHT * 0.5 + 0.5) * h
         cnt_size = len(cnt)
         if classes[i] == 1:
@@ -200,6 +201,6 @@ if __name__ == "__main__":
     #     contour_targets = []
     #     for x in annotations:
     #         print(len(x["total"]))
-    #         contours.append(x["total"][:, :2] * VALUE_WEIGHT)
+    #         contours.append(x["total"][:, :2])
     #         contour_targets.append(x["total"][:, 2:4] * VALUE_WEIGHT)
     #     save_test_batch(imgs, bmasks, labels, contours, contour_targets, result_path="./results", result_name=f"test_{i}")
