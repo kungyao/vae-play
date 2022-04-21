@@ -58,7 +58,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
         loss_total_regress = F.l1_loss(
             torch.cat(preds["target_pts"], dim=0), 
             total_contour
-        )
+        ) * 100
 
         loss_key_regress = []
         for cnt_idx, key in enumerate(key_contour):
