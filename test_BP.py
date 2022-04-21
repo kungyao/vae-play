@@ -9,7 +9,7 @@ import torchvision.transforms.functional as TF
 from torchvision import transforms
 from torch.utils.data import DataLoader
 
-from datasets.dataset import BPDataset, BEDatasetGAN
+from datasets.dataset import BPDataset, BPDatasetTEST
 from models.networks_BP import ComposeNet
 from tools.utils import makedirs, rotate_vector, unit_vector
 
@@ -23,7 +23,7 @@ def test_collate_fn_BP(batch):
     return imgs, bmasks, ellipses, target
 
 def test_collate_fn_BEGAN(batch):
-    imgs, bimgs, _ = zip(*batch)
+    imgs, bimgs = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
     return imgs, bimgs
@@ -215,9 +215,8 @@ def save_test_batch(imgs, bmasks, ellipses, targets, predictions, result_path, r
 def save_test_batch_(imgs, bmasks, predictions, result_path, result_name):
     b, c, h, w = imgs.shape
 
-    if c == 3:
-        imgs = imgs[:, 0, :, :].reshape(b, 1, h, w)
-        bmasks = bmasks[:, 0, :, :].reshape(b, 1, h, w)
+    # imgs = imgs[:, 0, :, :].reshape(b, 1, h, w)
+    bmasks = bmasks[:, 0, :, :].reshape(b, 1, h, w)
 
     pred_ellipse_params = predictions["ellipse_params"]
     # Weight
@@ -297,8 +296,8 @@ def save_test_batch_(imgs, bmasks, predictions, result_path, result_name):
             if dst >= 0 and dst < h:
                 tmp_img[0, dst, cx] = 1.0
 
-        results.append(tmp_img)
-        results_w_mask.append(tmp_bmask)
+        results.append(tmp_img.repeat(3, 1, 1))
+        results_w_mask.append(tmp_bmask.repeat(3, 1, 1))
     results = torch.stack(results, dim=0)
     results_w_mask = torch.stack(results_w_mask, dim=0)
 
@@ -354,7 +353,7 @@ if __name__ == "__main__":
     #         save_test_batch(imgs, bmasks, ellipses, targets, preds, res_output, f"test_{i}")
 
     data_loader = DataLoader(
-        BEDatasetGAN("D:/Manga/bubble-gen-label", (args.img_size, args.img_size), select_list=["3"]), 
+        BPDatasetTEST("D:/Manga/bubble-gen-label", args.img_size), 
         batch_size=args.batchsize, 
         shuffle=False, 
         num_workers=4, 
