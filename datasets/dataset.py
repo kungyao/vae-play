@@ -456,6 +456,20 @@ class BPDatasetTEST(Dataset):
         # img = torch.multiply(img, eimg) + (1 - eimg)
         return img, bimg
 
+def random_offset(bbox, img_size):
+    left, upper, right, lower = bbox
+    left = -left + 1
+    upper = -upper + 1
+    right = img_size - right
+    lower = img_size - lower
+    offset_x = 0
+    offset_y = 0
+    if left < right:
+        offset_x = np.random.randint(left, right)
+    if upper < lower:
+        offset_y = np.random.randint(upper, lower)
+    return offset_x, offset_y
+
 # Bubble Contour parameter
 class BCPDataset(Dataset):
     def __init__(self, data_path, img_size) -> None:
@@ -479,6 +493,8 @@ class BCPDataset(Dataset):
 
                 with open(os.path.join(anno_path, f"{name}.txt"), 'r') as fp:
                     annotation = json.load(fp)
+                annotation["key"] = np.array(annotation["key"])
+                annotation["total"] = np.array(annotation["total"])
                 self.annotations.append(annotation)
 
     def __len__(self):
@@ -486,6 +502,8 @@ class BCPDataset(Dataset):
 
     def __getitem__(self, idx):
         mask = Image.open(self.masks[idx], "r").convert("L")
+        # 
+        offset_x, offset_y = random_offset(mask.getbbox(), mask.height)
         scale = 1 / mask.height
 
         layer = Image.open(self.layers[idx], "r").convert("RGB")
@@ -503,14 +521,40 @@ class BCPDataset(Dataset):
         img = torch.cat([img, bmask, emask], dim=0)
         bmask = bmask.repeat(3, 1, 1)
 
-
         annotation = {}
         key_annotation = torch.FloatTensor(self.annotations[idx]["key"])
         total_annotation = torch.FloatTensor(self.annotations[idx]["total"])
 
+        if offset_x != 0 or offset_y != 0:
+            img = TF.affine(img, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0)
+            bmask = TF.affine(bmask, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0)
+            if offset_x != 0:
+                total_annotation[:, 0:3:2] += offset_x
+                if key_annotation.numel() != 0:
+                    key_annotation[:, 0:3:2] += offset_x
+            if offset_y != 0:
+                total_annotation[:, 1:4:2] += offset_y
+                if key_annotation.numel() != 0:
+                    key_annotation[:, 1:4:2] += offset_y
+
         if key_annotation.numel() != 0:
             key_annotation[:, :4] = (key_annotation[:, :4] * scale - 0.5) / 0.5
         total_annotation[:, :4] = (total_annotation[:, :4] * scale - 0.5) / 0.5
+        
+        if torch.rand(1) < 0.5:
+            img = TF.vflip(img)
+            bmask = TF.vflip(bmask)
+            total_annotation[:, 1:4:2] *= -1
+            if key_annotation.numel() != 0:
+                key_annotation[:, 1:4:2] *= -1
+
+        if torch.rand(1) < 0.5:
+            img = TF.hflip(img)
+            bmask = TF.hflip(bmask)
+            total_annotation[:, 0:3:2] *= -1
+            if key_annotation.numel() != 0:
+                key_annotation[:, 0:3:2] *= -1
+
 
         annotation["key"] = key_annotation
         annotation["total"] = total_annotation

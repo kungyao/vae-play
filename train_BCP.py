@@ -137,7 +137,7 @@ if __name__ == "__main__":
     parser.add_argument('--gpu', type=int, dest='gpu', default=0)
     parser.add_argument('--epoch', type=int, dest='epochs', default=1)
     parser.add_argument('--iterations', type=int, dest='iterations', default=200)
-    parser.add_argument('--batchsize', type=int, dest='batchsize', default=8)
+    parser.add_argument('--batchsize', type=int, dest='batchsize', default=16)
     #
     parser.add_argument('--workers', type=int, dest='workers', default=0)
     # 
