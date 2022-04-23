@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from torch.nn.functional import grid_sample
-from torchvision.models.resnet import resnet50
+from torchvision.models.resnet import resnet18
 from torchvision.models.densenet import densenet121
 
 try:
@@ -95,7 +95,7 @@ class ComposeNet(nn.Module):
         self.max_point = pt_size
         # 實心or射線
         self.cls_classifier = nn.Sequential(
-            resnet50(pretrained=True), 
+            resnet18(pretrained=True), 
             nn.Linear(1000, 2)
         )
 
