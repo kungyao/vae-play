@@ -108,8 +108,8 @@ class ComposeNet(nn.Module):
             size = []
             contours = []
             for t in target:
-                size.append(len(t["total"]))
-                contours.append(t["total"][:, :2])
+                size.append(len(t["points"]))
+                contours.append(t["points"][:, :2])
             # contours = torch.stack(contours, dim=0)
         else:
             b, c, h, w = x.shape

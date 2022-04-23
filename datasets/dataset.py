@@ -493,8 +493,7 @@ class BCPDataset(Dataset):
 
                 with open(os.path.join(anno_path, f"{name}.txt"), 'r') as fp:
                     annotation = json.load(fp)
-                annotation["key"] = np.array(annotation["key"])
-                annotation["total"] = np.array(annotation["total"])
+                annotation["points"] = np.array(annotation["points"])
                 self.annotations.append(annotation)
 
     def __len__(self):
