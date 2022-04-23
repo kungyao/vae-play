@@ -50,26 +50,29 @@ def train(args, epoch, iterations, net, optim, train_loader):
 
         preds = net(imgs, target=annotation)
 
-        size = [len(t["total"]) for t in annotation]
-        key_contour = [t["key"] for t in annotation]
-        total_contour = torch.cat([t["total"][:, 2:4] for t in annotation], dim=0) * VALUE_WEIGHT
+        # size = [len(t["total"]) for t in annotation]
 
         loss_class = F.cross_entropy(preds["classes"], labels)
+
+        contour_target_gt = torch.cat([t["points"][:, 2:4] for t in annotation], dim=0) * VALUE_WEIGHT
         loss_total_regress = F.l1_loss(
             torch.cat(preds["target_pts"], dim=0), 
-            total_contour
-        ) * 100
+            contour_target_gt
+        )
 
         loss_key_regress = []
-        for cnt_idx, key in enumerate(key_contour):
-            if key.numel() != 0:
-                loss_key_regress.append(
-                    F.l1_loss(preds["target_pts"][cnt_idx][key[:, 4].to(torch.long)], key[:, 2:4] * VALUE_WEIGHT)
-                )
-        if len(loss_key_regress) != 0:
-            loss_key_regress = torch.mean(torch.stack(loss_key_regress, dim=0))
-        else:
-            loss_key_regress = torch.tensor(0)
+        for cnt_idx in range(len(annotation)):
+            anno = annotation[cnt_idx]
+            # 怕有誤差，準確來說是要 == 1.0
+            select = anno["points"][:, 5] > 0.9
+            if torch.sum(select) != 0:
+                loss_key = torch.abs(preds["target_pts"][cnt_idx][select] - anno["points"][select, 2:4] * VALUE_WEIGHT)
+                # times length for another weight
+                loss_key = loss_key * anno["points"][select, 4]
+                loss_key_regress.append(loss_key)
+            else:
+                loss_key_regress.append(torch.tensor(0.))
+        loss_key_regress = torch.mean(torch.stack(loss_key_regress, dim=0))
 
         losses = loss_class + loss_total_regress + loss_key_regress * 10
 

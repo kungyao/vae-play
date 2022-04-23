@@ -522,42 +522,31 @@ class BCPDataset(Dataset):
         bmask = bmask.repeat(3, 1, 1)
 
         annotation = {}
-        key_annotation = torch.FloatTensor(self.annotations[idx]["key"])
-        total_annotation = torch.FloatTensor(self.annotations[idx]["total"])
+        points_annotation = torch.FloatTensor(self.annotations[idx]["points"])
 
         if offset_x != 0 or offset_y != 0:
             img = TF.affine(img, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0)
             bmask = TF.affine(bmask, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0)
             if offset_x != 0:
-                total_annotation[:, 0:3:2] += offset_x
-                if key_annotation.numel() != 0:
-                    key_annotation[:, 0:3:2] += offset_x
+                points_annotation[:, 0:3:2] += offset_x
             if offset_y != 0:
-                total_annotation[:, 1:4:2] += offset_y
-                if key_annotation.numel() != 0:
-                    key_annotation[:, 1:4:2] += offset_y
+                points_annotation[:, 1:4:2] += offset_y
 
-        if key_annotation.numel() != 0:
-            key_annotation[:, :4] = (key_annotation[:, :4] * scale - 0.5) / 0.5
-        total_annotation[:, :4] = (total_annotation[:, :4] * scale - 0.5) / 0.5
+        points_annotation[:, :4] = (points_annotation[:, :4] * scale - 0.5) / 0.5
+        # normalize length
+        # points_annotation[:, 4] = (points_annotation[:, 4] * scale) / 0.5
         
         if torch.rand(1) < 0.5:
             img = TF.vflip(img)
             bmask = TF.vflip(bmask)
-            total_annotation[:, 1:4:2] *= -1
-            if key_annotation.numel() != 0:
-                key_annotation[:, 1:4:2] *= -1
+            points_annotation[:, 1:4:2] *= -1
 
         if torch.rand(1) < 0.5:
             img = TF.hflip(img)
             bmask = TF.hflip(bmask)
-            total_annotation[:, 0:3:2] *= -1
-            if key_annotation.numel() != 0:
-                key_annotation[:, 0:3:2] *= -1
+            points_annotation[:, 0:3:2] *= -1
 
-
-        annotation["key"] = key_annotation
-        annotation["total"] = total_annotation
+        annotation["points"] = points_annotation
 
         return img, bmask, self.labels[idx], annotation
 
