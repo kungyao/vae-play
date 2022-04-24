@@ -13,7 +13,7 @@ except:
     from blocks import *
 from tools.utils import find_contour, resample_points
 
-VALUE_WEIGHT = 512
+VALUE_WEIGHT = 10
 
 class ContentEndoer(nn.Module):
     def __init__(self, in_channels):
@@ -108,7 +108,7 @@ class ComposeNet(nn.Module):
 
         self.add_coord = AddCoords(if_normalize=True)
         self.encoder = ContentEndoer(3 + 2)
-        self.line_predictor = LinePredictor(image_size, pt_size=4096, in_channels=self.encoder.out_channels)
+        self.line_predictor = LinePredictor(image_size, pt_size=pt_size, in_channels=self.encoder.out_channels)
 
     def forward(self, x, target=None):
         if self.training and target is not None:

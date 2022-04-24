@@ -75,7 +75,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
                 loss_key_regress.append(torch.tensor(0.))
         loss_key_regress = torch.mean(torch.stack(loss_key_regress, dim=0))
 
-        losses = loss_class + (loss_total_regress + loss_key_regress) * 10
+        losses = loss_class + (loss_total_regress * 2 + loss_key_regress) * 10
 
         optim.zero_grad()
         losses.backward()
@@ -96,8 +96,9 @@ def train(args, epoch, iterations, net, optim, train_loader):
                 print(res_str)
                 imgs = imgs.cpu()
                 _, classes = torch.max(preds["classes"], dim=1)
+                split_contour_pts = [x.cpu() for x in preds["contours"]]
                 split_preds_target_pts = [x.cpu() for x in preds["target_pts"]]
-                save_test_batch(imgs, bmasks, classes, preds["contours"], split_preds_target_pts, args.res_output, f"{epoch}_{i+1}")
+                save_test_batch(imgs, bmasks, classes, split_contour_pts, split_preds_target_pts, args.res_output, f"{epoch}_{i+1}")
     return
 
 def save_test_batch(imgs, bmasks, classes, contours, contour_targets, result_path, result_name):
@@ -110,7 +111,8 @@ def save_test_batch(imgs, bmasks, classes, contours, contour_targets, result_pat
         tmp_b = np.ascontiguousarray(tmp_b.numpy()).astype(np.uint8) * 255
         # Contour不用 /VALUE_WEIGHT
         cnt = (contours[i] * 0.5 + 0.5) * h
-        cnt_target = ((contour_targets[i] / VALUE_WEIGHT) * 0.5 + 0.5) * h
+        # cnt_target = ((contour_targets[i] / VALUE_WEIGHT) * 0.5 + 0.5) * h
+        cnt_target = ((contours[i] + contour_targets[i] / VALUE_WEIGHT) * 0.5 + 0.5) * h
         cnt_size = len(cnt)
         if classes[i] == 1:
             for j in range(cnt_size):
@@ -146,7 +148,7 @@ if __name__ == "__main__":
     parser.add_argument('--workers', type=int, dest='workers', default=0)
     # 
     parser.add_argument('--img_size', type=int, dest='img_size', default=512)
-    # parser.add_argument('--max_points', type=int, dest='max_points', default=DEFAULT_MAX_POINTS)
+    parser.add_argument('--max_points', type=int, dest='max_points', default=2048)
     #
     parser.add_argument('--res_output', type=str, dest='res_output', default='./results')
     parser.add_argument('--model_output', type=str, dest='model_output', default='./logs')
@@ -166,7 +168,7 @@ if __name__ == "__main__":
     record_txt.close()
 
     # width height
-    dset = BCPDataset(args.path, args.img_size)
+    dset = BCPDataset(args.path, args.img_size, args.max_points)
     dloader = DataLoader(
         dset, 
         batch_size=args.batchsize, 
@@ -175,7 +177,7 @@ if __name__ == "__main__":
         collate_fn=train_collate_fn, 
         pin_memory=True)
     
-    net = ComposeNet(args.img_size)
+    net = ComposeNet(args.img_size, pt_size=args.max_points)
     initialize_model(net.encoder)
     initialize_model(net.line_predictor)
 

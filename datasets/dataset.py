@@ -472,11 +472,12 @@ def random_offset(bbox, img_size):
 
 # Bubble Contour parameter
 class BCPDataset(Dataset):
-    def __init__(self, data_path, img_size) -> None:
+    def __init__(self, data_path, img_size, max_points=256) -> None:
         self.layers = []
         self.masks = []
         self.labels = []
         self.annotations = []
+        self.max_points = max_points
 
         for cls_name in os.listdir(data_path):
             cls_folder = os.path.join(data_path, cls_name)
@@ -521,7 +522,7 @@ class BCPDataset(Dataset):
         bmask = bmask.repeat(3, 1, 1)
 
         annotation = {}
-        points_annotation = torch.FloatTensor(self.annotations[idx]["points"])
+        points_annotation = torch.FloatTensor(resample_points(self.annotations[idx]["points"], max_points=self.max_points))
 
         if offset_x != 0 or offset_y != 0:
             img = TF.affine(img, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0)
@@ -544,6 +545,9 @@ class BCPDataset(Dataset):
             img = TF.hflip(img)
             bmask = TF.hflip(bmask)
             points_annotation[:, 0:3:2] *= -1
+        
+        # Offset
+        points_annotation[:, 2:4] = points_annotation[:, 2:4] - points_annotation[:, 0:2]
 
         annotation["points"] = points_annotation
 

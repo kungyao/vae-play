@@ -115,6 +115,7 @@ def resample_points(contour, max_points: int=256):
         select = np.arange(1, max_points - 1) * sample_step
         select = np.round(select, decimals=1)
         select = np.concatenate([[0], select, [l-1]], axis=0)
+        select = select.astype(np.int32)
         # new_c = [contour[0]]
         # for i in range(max_points - 2):
         #     idx = round((i + 1) * sample_step)
