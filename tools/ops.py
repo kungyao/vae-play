@@ -188,4 +188,4 @@ def initialize_model(model):
             nn.init.kaiming_uniform_(m.weight, a=math.sqrt(5))
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
-
+    return model

@@ -178,7 +178,11 @@ if __name__ == "__main__":
         pin_memory=True)
     
     net = ComposeNet(args.img_size, pt_size=args.max_points)
-    initialize_model(net.encoder)
+    # initialize_model(net.encoder)
+    initialize_model(net.encoder.conv_first)
+    # initialize_model(net.encoder.backbone_0)
+    initialize_model(net.encoder.backbone_1)
+    initialize_model(net.encoder.conv_last)
     initialize_model(net.line_predictor)
 
     net.cuda(args.gpu)
