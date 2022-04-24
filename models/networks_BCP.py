@@ -37,7 +37,12 @@ class LinePredictor(nn.Module):
     def __init__(self, image_size, pt_size=4096, in_channels=256):
         super().__init__()
         self.max_point = pt_size
-        self.batch_attention = nn.Sequential(
+        self.batch_attention_solid = nn.Sequential(
+            SelfAttentionBlock(pt_size), 
+            SelfAttentionBlock(pt_size), 
+            SelfAttentionBlock(pt_size)
+        )
+        self.batch_attention_emit = nn.Sequential(
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size)
@@ -72,13 +77,15 @@ class LinePredictor(nn.Module):
         resamples = torch.stack(resamples, dim=0)
         return resamples
     
-    def forward(self, x: torch.Tensor, contours: torch.Tensor):
+    def forward(self, x: torch.Tensor, cls_x:torch.Tensor, contours: torch.Tensor):
         # Sample points on feature map. (batch, pt, in_channel(256)).
         x = self.process(x, contours) 
         # Do predict.
         b, c, n = x.shape
         x = x.reshape(b, c, n, 1)
-        x = self.batch_attention(x)
+        weight_solid = cls_x[:, 0].reshape(b, 1, 1, 1).repeat(1, c, n, 1)
+        weight_emit = cls_x[:, 1].reshape(b, 1, 1, 1).repeat(1, c, n, 1)
+        x = self.batch_attention_solid(x) * weight_solid + self.batch_attention_emit(x) * weight_emit
         x = x.reshape(b, c, n)
         size_per_img = [len(x) for x in contours]
         tmp_x = []
@@ -127,7 +134,7 @@ class ComposeNet(nn.Module):
         # 
         x = self.add_coord(x)
         x = self.encoder(x)
-        x = self.line_predictor(x, contours)
+        x = self.line_predictor(x, cls_x.detach(), contours)
         x = x.split(size)
         return {
             "classes": cls_x, 

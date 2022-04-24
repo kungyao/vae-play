@@ -68,7 +68,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
             if torch.sum(select) != 0:
                 loss_key = torch.abs(preds["target_pts"][cnt_idx][select] - anno["points"][select, 2:4] * VALUE_WEIGHT)
                 # times length for another weight
-                loss_key = torch.sum(loss_key, dim=1) * anno["points"][select, 4]
+                loss_key = torch.sum(loss_key, dim=1) # * anno["points"][select, 4]
                 loss_key = torch.mean(loss_key)
                 loss_key_regress.append(loss_key)
             else:
