@@ -52,9 +52,9 @@ class ContentEndoer(nn.Module):
             Conv2d(512, 512, 3, stride=1, bn=None, activate="lrelu"), 
         )
 
-        self.conv_last = Conv2d(512 * 2, 512, 1, stride=1, bn=None, activate=None)
+        self.conv_last = Conv2d(512 * 2, 512 * 2, 1, stride=1, bn=None, activate=None)
         self.out_size = 32
-        self.out_channels = 512
+        self.out_channels = 512 * 2
 
     def forward(self, x: torch.Tensor):
         x = self.conv_first(x)
@@ -98,19 +98,19 @@ class LinePredictor(nn.Module):
         super().__init__()
         self.max_point = pt_size
         
-        self.frequency_encode = []
-        level = int(log2(image_size)) - 1
-        tmp_channel = in_channels
-        tmp_out_channel = in_channels
-        for _ in range(level):
-            tmp_channel = tmp_out_channel
-            tmp_out_channel = min(pt_size, tmp_channel * 2)
-            self.frequency_encode.append(Conv2d(tmp_channel, tmp_out_channel, 3, stride=2, bn=None, activate="lrelu"))
-        self.frequency_encode.append(Conv2d(tmp_channel, pt_size, 1, stride=1, bn=None, activate=None))
-        self.frequency_encode.append(nn.AdaptiveAvgPool2d(1))
-        self.frequency_encode = nn.Sequential(*self.frequency_encode)
-        embed_size = 2 + 1
-        self.value_encoder = ValueEncoder(embed_size, in_channels, pt_size=pt_size)
+        # self.frequency_encode = []
+        # level = int(log2(image_size)) - 1
+        # tmp_channel = in_channels
+        # tmp_out_channel = in_channels
+        # for _ in range(level):
+        #     tmp_channel = tmp_out_channel
+        #     tmp_out_channel = min(pt_size, tmp_channel * 2)
+        #     self.frequency_encode.append(Conv2d(tmp_channel, tmp_out_channel, 3, stride=2, bn=None, activate="lrelu"))
+        # self.frequency_encode.append(Conv2d(tmp_channel, pt_size, 1, stride=1, bn=None, activate=None))
+        # self.frequency_encode.append(nn.AdaptiveAvgPool2d(1))
+        # self.frequency_encode = nn.Sequential(*self.frequency_encode)
+        # embed_size = 2 + 1
+        # self.value_encoder = ValueEncoder(embed_size, in_channels, pt_size=pt_size)
 
         self.batch_attention = nn.Sequential(
             SelfAttentionBlock(pt_size), 
@@ -120,11 +120,17 @@ class LinePredictor(nn.Module):
         # -10~10
         # -10~10
         # offset_x, offset_y
-        in_channels = in_channels * (1 + 1) # Plus embedding
+        in_channels = in_channels * (1) # Plus embedding
         self.params_pred = nn.Sequential(
             Linear(in_channels, in_channels, activate='lrelu'), 
             Linear(in_channels, in_channels, activate=None), 
             Linear(in_channels, 2, activate=None)
+        )
+        self.frequency_pred = nn.Sequential(
+            Linear(in_channels, in_channels, activate='relu'), 
+            Linear(in_channels, in_channels, activate='relu'), 
+            Linear(in_channels, 1, activate=None),
+            nn.Sigmoid()
         )
 
     def process(self, x: torch.Tensor, contours: torch.Tensor):
@@ -152,17 +158,17 @@ class LinePredictor(nn.Module):
         b, c, h, w = x.shape
         # Sample points on feature map. (batch, pt, in_channel(256)).
         x_pt_feature = self.process(x, contours) 
-        # (batch, c(=pt_size), 1, 1)
-        x_freq = self.frequency_encode(x)
-        cls_x = cls_x.reshape(b, 1, 1, -1).repeat(1, self.max_point, 1, 1)
-        x_freq = torch.cat([x_freq, cls_x], dim=3)
-        x_freq = self.value_encoder(x_freq)
+        # # (batch, c(=pt_size), 1, 1)
+        # x_freq = self.frequency_encode(x)
+        # cls_x = cls_x.reshape(b, 1, 1, -1).repeat(1, self.max_point, 1, 1)
+        # x_freq_embed = torch.cat([x_freq, cls_x], dim=3)
+        # x_freq_embed = self.value_encoder(x_freq_embed)
 
         # Do predict.
         x_pt_feature = x_pt_feature.reshape(b, self.max_point, c, 1)
         # print(x_pt_feature.shape, x_freq.shape, cls_x.shape)
-        x = torch.cat([x_pt_feature, x_freq], dim=-1)
-        # x = torch.cat([x_pt_feature, x_freq, cls_x], dim=-1)
+        # x = torch.cat([x_pt_feature, x_freq_embed], dim=-1)
+        x = x_pt_feature
         # print(x.shape)
         x = self.batch_attention(x)
         # print(x.shape)
@@ -175,9 +181,15 @@ class LinePredictor(nn.Module):
         x = torch.cat(tmp_x, dim=0)
         # print(x.shape)
         # 
-        x = self.params_pred(x) 
+        x_pred = self.params_pred(x) 
+        x_freq = self.frequency_pred(x).squeeze()
         # print(x.shape)
-        return x
+        # x_freq = x_freq.squeeze()
+        # tmp_freq = []
+        # for i in range(b):
+        #     tmp_freq.append(x_freq[i][:size_per_img[i]])
+        # x_freq = torch.cat(tmp_freq, dim=0)
+        return x_pred, x_freq
 
 class ComposeNet(nn.Module):
     def __init__(self, image_size, pt_size=4096):
@@ -217,10 +229,12 @@ class ComposeNet(nn.Module):
         # 
         x = self.add_coord(x)
         x = self.encoder(x)
-        x = self.line_predictor(x, contours, cls_x.detach())
+        x, x_freq = self.line_predictor(x, contours, cls_x.detach())
         x = x.split(size)
+        x_freq = x_freq.split(size)
         return {
             "classes": cls_x, 
             "contours": contours, 
             "target_pts": x, 
+            "target_frequency": x_freq, 
         }

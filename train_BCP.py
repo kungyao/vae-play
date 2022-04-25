@@ -30,6 +30,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
     count = 0
     avg_loss = {
         "loss_class": 0, 
+        "loss_frequency": 0, 
         "loss_total_regress": 0, 
         "loss_key_regress": 0, 
     }
@@ -53,6 +54,12 @@ def train(args, epoch, iterations, net, optim, train_loader):
         # size = [len(t["total"]) for t in annotation]
 
         loss_class = F.cross_entropy(preds["classes"], labels)
+        
+        contour_target_frequency = torch.cat([t["points"][:, 5] for t in annotation], dim=0)
+        loss_frequency = F.l1_loss(
+            torch.cat(preds["target_frequency"], dim=0), 
+            contour_target_frequency
+        )
 
         contour_target_gt = torch.cat([t["points"][:, 2:4] for t in annotation], dim=0) * VALUE_WEIGHT
         loss_total_regress = F.l1_loss(
@@ -75,7 +82,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
                 loss_key_regress.append(torch.tensor(0.))
         loss_key_regress = torch.mean(torch.stack(loss_key_regress, dim=0))
 
-        losses = loss_class + (loss_total_regress * 2 + loss_key_regress) * 10
+        losses = loss_class + loss_frequency * 2 + (loss_total_regress * 2 + loss_key_regress) * 10
 
         optim.zero_grad()
         losses.backward()
@@ -84,6 +91,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
         with torch.no_grad():
             next_count = count + imgs.size(0)
             avg_loss["loss_class"] = (avg_loss["loss_class"] * count + loss_class.item()) / next_count
+            avg_loss["loss_frequency"] = (avg_loss["loss_frequency"] * count + loss_frequency.item()) / next_count
             avg_loss["loss_total_regress"] = (avg_loss["loss_total_regress"] * count + loss_total_regress.item()) / next_count
             avg_loss["loss_key_regress"] = (avg_loss["loss_key_regress"] * count + loss_key_regress.item()) / next_count
             count = next_count
@@ -191,7 +199,7 @@ if __name__ == "__main__":
     step_size = 2
     # step_size = args.epochs // 4
     step_size = 1 if step_size == 0 else step_size
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size, gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size, gamma=0.5)
 
     for epoch in range(args.epochs):
         train(args, epoch, args.iterations, net, optim, dloader)
