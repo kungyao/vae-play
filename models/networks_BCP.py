@@ -53,7 +53,7 @@ class ContentEndoer(nn.Module):
         )
 
         self.conv_last = Conv2d(512 * 2, 512 * 2, 1, stride=1, bn=None, activate=None)
-        self.out_size = 32
+        self.out_size = 16
         self.out_channels = 512 * 2
 
     def forward(self, x: torch.Tensor):
