@@ -112,15 +112,20 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
 
         optim.zero_grad()
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, kana_masks) + compute_dice_loss(pred_masks.sigmoid(), kana_masks)
-        loss_mask = loss_mask * 1.0
+        loss_mask = loss_mask * 10
+        # 
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, kana_edge_masks) + compute_dice_loss(pred_edges.sigmoid(), kana_edge_masks)
-        loss_egde = loss_egde * 1.0
+        loss_egde = loss_egde * 10
+        # 
         loss_latent_label = F.cross_entropy(pred_latent_label_cls, labels)
+        loss_latent_label = loss_latent_label * 1.0
+        # 
         loss_latent_style = F.cross_entropy(pred_latent_style_cls, train_content_styles)
-        # loss_label = F.cross_entropy(pred_labels, labels)
-        # loss_content_style = F.cross_entropy(pred_content_style, train_content_styles) # * 0
+        loss_latent_style = loss_latent_style * 1.0
+        # 
         loss_g_adv = F.binary_cross_entropy(g_adv, torch.ones((b, 1), device=g_adv.device))
         loss_g_adv = loss_g_adv * 2
+        # 
         losses = loss_egde + loss_mask + loss_g_adv + loss_latent_label + loss_latent_style
         losses.backward()
         optim.step()

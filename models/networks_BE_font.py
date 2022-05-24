@@ -140,12 +140,14 @@ class ComposeNet(nn.Module):
         self.label_classify = nn.Sequential(
             Linear(relay_in, relay_in), 
             Linear(relay_in, relay_in), 
-            Linear(relay_in, 143), 
+            Linear(relay_in, 143, activate=None), 
+            nn.Softmax()
         )
         self.style_classify = nn.Sequential(
             Linear(relay_in, relay_in), 
             Linear(relay_in, relay_in), 
-            Linear(relay_in, 2), 
+            Linear(relay_in, 2, activate=None), 
+            nn.Softmax()
         )
 
         self.up = nn.ModuleList()
