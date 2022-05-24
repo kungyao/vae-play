@@ -33,6 +33,8 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
     avg_loss = {
         "loss_edge": 0,
         "loss_mask": 0, 
+        "loss_latent_label": 0, 
+        "loss_latent_style": 0, 
         "d_adv_real": 0, 
         "d_adv_fake": 0, 
         "loss_g_adv": 0, 
@@ -74,10 +76,10 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         kana_masks = kana_masks.cuda(args.gpu)
         kana_edge_masks = kana_edge_masks.cuda(args.gpu)
         train_content_styles = train_content_styles.cuda(args.gpu)
-        train_y_map = {
-            "cls": labels, 
-            "cnt_style": train_content_styles
-        }
+        # train_y_map = {
+        #     "cls": labels, 
+        #     "cnt_style": train_content_styles
+        # }
 
         # Train D
         # label_disc = torch.zeros((b, 143))
@@ -86,60 +88,48 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         label_disc = labels
         kana_gt_merge = torch.cat([kana_masks, kana_edge_masks], dim=1)
         with torch.no_grad():
-            preds = net(kana_imgs, y=train_y_map)
+            preds = net(kana_imgs)
             kana_pred_merge = torch.cat([preds["masks"].detach(), preds["edges"].detach()], dim=1)
 
         d_gt_adv = disc(kana_gt_merge, label_disc, train_content_styles)
         d_pred_adv = disc(kana_pred_merge, label_disc, train_content_styles)
 
         optim_disc.zero_grad()
-
         d_adv_real = F.binary_cross_entropy(d_gt_adv, torch.ones((b, 1), device=d_gt_adv.device)) # + F.cross_entropy(d_gt_cls, labels)
-        d_adv_real.backward(retain_graph=True)
-
         d_adv_fake = F.binary_cross_entropy(d_pred_adv, torch.zeros((b, 1), device=d_pred_adv.device)) # + F.cross_entropy(d_pred_cls, labels)
-        d_adv_fake.backward()
-
-        # d_adv_loss = (d_adv_real + d_adv_fake) * 0.5
-        # d_adv_loss.backward()
+        d_adv_loss = (d_adv_real + d_adv_fake) * 0.5
+        d_adv_loss.backward()
         optim_disc.step()
 
         # Train G 
-        preds = net(kana_imgs, y=train_y_map)
+        preds = net(kana_imgs)
         pred_masks = preds["masks"]
         pred_edges = preds["edges"]
-        # pred_labels = preds["labels"]
-        # pred_content_style = preds["content_style"]
+        pred_latent_label_cls = preds["latent_label_cls"]
+        pred_latent_style_cls = preds["latent_style_cls"]
 
         g_adv = disc(torch.cat([pred_masks, pred_edges], dim=1), label_disc, train_content_styles)
 
         optim.zero_grad()
-
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, kana_masks) + compute_dice_loss(pred_masks.sigmoid(), kana_masks)
         loss_mask = loss_mask * 1.0
-        loss_mask.backward(retain_graph=True)
-
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, kana_edge_masks) + compute_dice_loss(pred_edges.sigmoid(), kana_edge_masks)
         loss_egde = loss_egde * 1.0
-        loss_egde.backward(retain_graph=True)
-
-        # loss_mask = loss_mask * 0
-        # loss_egde = loss_egde * 0
+        loss_latent_label = F.cross_entropy(pred_latent_label_cls, labels)
+        loss_latent_style = F.cross_entropy(pred_latent_style_cls, train_content_styles)
         # loss_label = F.cross_entropy(pred_labels, labels)
         # loss_content_style = F.cross_entropy(pred_content_style, train_content_styles) # * 0
         loss_g_adv = F.binary_cross_entropy(g_adv, torch.ones((b, 1), device=g_adv.device))
         loss_g_adv = loss_g_adv * 2
-        loss_g_adv.backward()
-
-        # losses = loss_egde + loss_mask + loss_g_adv
-        # losses.backward()
+        losses = loss_egde + loss_mask + loss_g_adv + loss_latent_label + loss_latent_style
+        losses.backward()
         optim.step()
         
         next_count = count + kana_imgs.size(0)
         avg_loss["loss_edge"] = (avg_loss["loss_edge"] * count + loss_egde.item()) / next_count
         avg_loss["loss_mask"] = (avg_loss["loss_mask"] * count + loss_mask.item()) / next_count
-        # avg_loss["loss_label"] = (avg_loss["loss_label"] * count + loss_label.item()) / next_count
-        # avg_loss["loss_content_style"] = (avg_loss["loss_content_style"] * count + loss_content_style.item()) / next_count
+        avg_loss["loss_latent_label"] = (avg_loss["loss_latent_label"] * count + loss_latent_label.item()) / next_count
+        avg_loss["loss_latent_style"] = (avg_loss["loss_latent_style"] * count + loss_latent_style.item()) / next_count
         avg_loss["d_adv_real"] = (avg_loss["d_adv_real"] * count + d_adv_real.item()) / next_count
         avg_loss["d_adv_fake"] = (avg_loss["d_adv_fake"] * count + d_adv_fake.item()) / next_count
         avg_loss["loss_g_adv"] = (avg_loss["loss_g_adv"] * count + loss_g_adv.item()) / next_count
