@@ -89,7 +89,7 @@ def prepare_syhthesis_data(base_img: Image.Image, target, kana_imgs, kana_masks,
         kernel_size = int(round(np.random.uniform(4, 17), 0)) // 2
         params = {
             'scale' : np.random.uniform(0.707, 1.414),
-            'angle' : 0, # np.random.uniform(-15, 15),
+            'angle' : np.random.uniform(-15, 15),
             'shear' : np.random.uniform(-0.8, 0.8),
             # round to digit zero
             'kernel_size' : kernel_size + (kernel_size+1)%2, 
@@ -131,7 +131,14 @@ def prepare_syhthesis_data(base_img: Image.Image, target, kana_imgs, kana_masks,
         train_imgs.append(train_img)
         train_masks.append(aug_content_mask)
         train_edge_masks.append(aug_edge_mask)
-        train_content_styles.append(1 if params['p'] > 0.5 else 0)
+        # train_content_styles.append(1 if params['p'] > 0.5 else 0)
+        train_content_styles.append([
+            1 if params['p'] > 0.5 else 0, 
+            params["scale"], 
+            params["angle"], 
+            params["shear"], 
+            params["kernel_size"]
+        ])
         
     return train_imgs, train_masks, train_edge_masks, train_content_styles
 

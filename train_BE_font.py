@@ -24,6 +24,7 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
     disc = models["disc"]
 
     optim = optims["net"]
+    optim_style_enc = optims["style_enc"]
     optim_disc = optims["disc"]
 
     net.train()
@@ -35,11 +36,10 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         "loss_mask": 0, 
         # "loss_latent_label": 0, 
         # "loss_latent_style": 0, 
-        "loss_cls_embed": 0, 
-        "loss_style_embed": 0, 
         "d_adv_real": 0, 
         "d_adv_fake": 0, 
         "loss_g_adv": 0, 
+        "loss_embed": 0, 
     }
 
     base_iter = iter(base_loader)
@@ -63,7 +63,7 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         kana_masks = torch.stack(kana_masks, dim=0)
         kana_edge_masks = [transform(kana_mask) for kana_mask in kana_edge_masks]
         kana_edge_masks = torch.stack(kana_edge_masks, dim=0)
-        train_content_styles = torch.LongTensor(train_content_styles)
+        train_content_styles = torch.FloatTensor(train_content_styles)
         b = kana_imgs.size(0)
 
         # vutils.save_image(
@@ -78,23 +78,23 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         kana_masks = kana_masks.cuda(args.gpu)
         kana_edge_masks = kana_edge_masks.cuda(args.gpu)
         train_content_styles = train_content_styles.cuda(args.gpu)
-        # train_y_map = {
-        #     "cls": labels, 
-        #     "cnt_style": train_content_styles
-        # }
+        
+        label_disc = torch.zeros((b, 143), dtype=train_content_styles.dtype)
+        label_disc[torch.LongTensor(range(b)), labels] = 1
+        label_disc = label_disc.cuda(args.gpu)
+        train_y_map = {
+            "cls": label_disc, 
+            "cnt_style": train_content_styles
+        }
 
         # Train D
-        # label_disc = torch.zeros((b, 143))
-        # label_disc[torch.LongTensor(range(b)), labels] = 1
-        # label_disc = label_disc.cuda(args.gpu)
-        label_disc = labels
         kana_gt_merge = torch.cat([kana_masks, kana_edge_masks], dim=1)
         with torch.no_grad():
-            preds = net(kana_imgs)
+            preds = net(kana_imgs, y=train_y_map)
             kana_pred_merge = torch.cat([preds["masks"].detach(), preds["edges"].detach()], dim=1)
 
-        d_gt_adv, _, _ = disc(kana_gt_merge, label_disc, train_content_styles) #  d_gt_cls_embed, d_gt_style_embed
-        d_pred_adv, _, _ = disc(kana_pred_merge, label_disc, train_content_styles) #  d_pred_cls_embed, d_pred_style_embed 
+        d_gt_adv = disc(kana_gt_merge, train_y_map) #  d_gt_cls_embed, d_gt_style_embed
+        d_pred_adv = disc(kana_pred_merge, train_y_map) #  d_pred_cls_embed, d_pred_style_embed 
 
         optim_disc.zero_grad()
         d_adv_real = F.binary_cross_entropy(d_gt_adv, torch.ones((b, 1), device=d_gt_adv.device)) # + F.cross_entropy(d_gt_cls, labels)
@@ -104,15 +104,15 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         optim_disc.step()
 
         # Train G 
-        preds = net(kana_imgs)
+        preds = net(kana_imgs, y=train_y_map)
         pred_masks = preds["masks"]
         pred_edges = preds["edges"]
-        pred_cls_embed = preds["y_cls"]
-        pred_style_embed = preds["y_cnt_style"]
+        # pred_cls_embed = preds["y_cls"]
+        # pred_style_embed = preds["y_cnt_style"]
         # pred_latent_label_cls = preds["latent_label_cls"]
         # pred_latent_style_cls = preds["latent_style_cls"]
 
-        g_adv, g_cls_embed, g_style_embed = disc(torch.cat([pred_masks, pred_edges], dim=1), label_disc, train_content_styles)
+        g_adv = disc(torch.cat([pred_masks, pred_edges], dim=1), train_y_map)
 
         optim.zero_grad()
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, kana_masks) + compute_dice_loss(pred_masks.sigmoid(), kana_masks)
@@ -130,23 +130,51 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         loss_g_adv = F.binary_cross_entropy(g_adv, torch.ones((b, 1), device=g_adv.device))
         loss_g_adv = loss_g_adv * 2
         # 
-        loss_cls_embed = F.l1_loss(pred_cls_embed, g_cls_embed)
-        loss_style_embed = F.l1_loss(pred_style_embed, g_style_embed)
         ## + loss_latent_label + loss_latent_style
-        losses = loss_egde + loss_mask + loss_g_adv + loss_cls_embed + loss_style_embed
+        losses = loss_egde + loss_mask + loss_g_adv
         losses.backward()
         optim.step()
 
+        # 
+        with torch.no_grad():
+            preds = net(kana_imgs, y=train_y_map)
+            pred_masks = preds["masks"]
+            pred_edges = preds["edges"]
+        preds = net(kana_imgs)
+        pred_masks_ = preds["masks"]
+        pred_edges_ = preds["edges"]
+
+        optim_style_enc.zero_grad()
+        # 
+        loss_mask_ = 0.5 * F.binary_cross_entropy_with_logits(pred_masks_, kana_masks) + compute_dice_loss(pred_masks_.sigmoid(), kana_masks)
+        loss_mask_ = loss_mask_ * 1.0
+        # 
+        loss_egde_ = 0.5 * F.binary_cross_entropy_with_logits(pred_edges_, kana_edge_masks) + compute_dice_loss(pred_edges_.sigmoid(), kana_edge_masks)
+        loss_egde_ = loss_egde_ * 1.0
+        # 
+        loss_embed = F.l1_loss(pred_masks_, pred_masks) + F.l1_loss(pred_edges_, pred_edges)
+        loss_embed = loss_embed * 2.0
+        losses = loss_mask_ + loss_egde_ + loss_embed
+        losses.backward()
+        optim_style_enc.step()
+
+        # with torch.no_grad():
+        #     gt_cls_embed, gt_cnt_style_embed = net.embeding_block(labels, train_content_styles)
+        # pred_cls_embed, pred_cnt_style_embed = net.style_encoder(kana_imgs, kana_imgs)
+        # optim_style_enc.zero_grad()
+        # loss_embed = F.l1_loss(pred_cls_embed, gt_cls_embed) + F.l1_loss(pred_cnt_style_embed, gt_cnt_style_embed)
+        # loss_embed.backward()
+        # optim_style_enc.step()
+        
         next_count = count + kana_imgs.size(0)
         avg_loss["loss_edge"] = (avg_loss["loss_edge"] * count + loss_egde.item()) / next_count
         avg_loss["loss_mask"] = (avg_loss["loss_mask"] * count + loss_mask.item()) / next_count
         # avg_loss["loss_latent_label"] = (avg_loss["loss_latent_label"] * count + loss_latent_label.item()) / next_count
         # avg_loss["loss_latent_style"] = (avg_loss["loss_latent_style"] * count + loss_latent_style.item()) / next_count
-        avg_loss["loss_cls_embed"] = (avg_loss["loss_cls_embed"] * count + loss_cls_embed.item()) / next_count
-        avg_loss["loss_style_embed"] = (avg_loss["loss_style_embed"] * count + loss_style_embed.item()) / next_count
         avg_loss["d_adv_real"] = (avg_loss["d_adv_real"] * count + d_adv_real.item()) / next_count
         avg_loss["d_adv_fake"] = (avg_loss["d_adv_fake"] * count + d_adv_fake.item()) / next_count
         avg_loss["loss_g_adv"] = (avg_loss["loss_g_adv"] * count + loss_g_adv.item()) / next_count
+        avg_loss["loss_embed"] = (avg_loss["loss_embed"] * count + loss_embed.item()) / next_count
         count = next_count
 
         if (batch+1) % args.viz_freq == 0:
@@ -155,13 +183,22 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
             for key in avg_loss:
                 res_str += f"{key}: {round(avg_loss[key], 6)}; "
             print(res_str)
+            with torch.no_grad():
+                preds = net(kana_imgs, y=train_y_map)
+                pred_masks = preds["masks"]
+                pred_edges = preds["edges"]
+                preds = net(kana_imgs)
+                pred_masks_ = preds["masks"]
+                pred_edges_ = preds["edges"]
             vutils.save_image(
                 torch.cat([
                     kana_imgs.cpu(), 
                     kana_masks.cpu().repeat(1, 3, 1, 1), 
                     pred_masks.cpu().repeat(1, 3, 1, 1),
+                    pred_masks_.cpu().repeat(1, 3, 1, 1),
                     kana_edge_masks.cpu().repeat(1, 3, 1, 1),
-                    pred_edges.cpu().repeat(1, 3, 1, 1)
+                    pred_edges.cpu().repeat(1, 3, 1, 1), 
+                    pred_edges_.cpu().repeat(1, 3, 1, 1)
                 ]), 
                 os.path.join(args.res_output, f'{epoch}_{batch}.png'),
                 nrow=kana_imgs.size(0)
@@ -173,7 +210,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
     # parser.add_argument('--path', type=str, dest='path', default="D:/Manga/bubble-gen-label")
     # 
-    parser.add_argument('--lr', type=float, dest='lr', default=1e-4)
+    parser.add_argument('--lr', type=float, dest='lr', default=5e-4)
     parser.add_argument('--gpu', type=int, dest='gpu', default=0)
     parser.add_argument('--epoch', type=int, dest='epochs', default=1)
     # parser.add_argument('--iterations', type=int, dest='iterations', default=1000)
@@ -228,6 +265,7 @@ if __name__ == "__main__":
     disc.cuda(args.gpu)
 
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+    optim_style_enc = torch.optim.Adam(net.style_encoder.parameters(), lr=args.lr)
     optim_disc = torch.optim.Adam(disc.parameters(), lr=args.lr)
     # scheduler = torch.optim.lr_scheduler.StepLR(optim, 10, gamma=0.5)
 
@@ -238,6 +276,7 @@ if __name__ == "__main__":
 
     optims = {
         "net": optim, 
+        "style_enc": optim_style_enc, 
         "disc": optim_disc, 
     }
 

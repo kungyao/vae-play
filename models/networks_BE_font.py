@@ -21,15 +21,28 @@ STYLE_EMBED = 256
 class EmbedingBlock(nn.Module):
     def __init__(self, in_channels, out_channels, in_size):
         super().__init__()
-        self.embeding = nn.Embedding(in_channels, out_channels)
-        self.convs = nn.Sequential(
+        
+        self.convs_first = nn.Sequential(
+            Linear(in_channels, out_channels, activate=None), 
+            Linear(out_channels, out_channels, activate=None), 
+        )
+        self.attention = nn.Sequential(
+            SelfAttentionBlock(out_channels), 
+            SelfAttentionBlock(out_channels), 
+            SelfAttentionBlock(out_channels), 
+        )
+        # self.embeding = nn.Embedding(in_channels, out_channels)
+        self.embeding = nn.Sequential(
             Linear(out_channels, out_channels, activate="lrelu"), 
             Linear(out_channels, out_channels, activate="lrelu"), 
         )
 
     def forward(self, x):
+        x = self.convs_first(x)
+        x = x.reshape(x.size(0), x.size(1), 1, 1)
+        x = self.attention(x)
+        x = x.reshape(x.size(0), -1)
         x = self.embeding(x)
-        x = self.convs(x)
         return x
 
 class StyleEncodeBlock(nn.Module):
@@ -64,7 +77,7 @@ class ParameterEmbedingNet(nn.Module):
             self.style_encode_block = encode_block(3, STYLE_EMBED, in_size)
         elif in_type == "embed":
             self.label_encode_block = encode_block(143, LABEL_EMBED, in_size)
-            self.style_encode_block = encode_block(2, STYLE_EMBED, in_size)
+            self.style_encode_block = encode_block(5, STYLE_EMBED, in_size)
 
     def forward(self, y_cls, y_cnt_style):
         y_cls = self.label_encode_block(y_cls)
@@ -130,6 +143,7 @@ class ComposeNet(nn.Module):
             in_channels = out_channels
             out_channels = min(in_channels * 2, max_channel)
 
+        self.embeding_block = ParameterEmbedingNet(EmbedingBlock, in_size, in_type="embed")
         self.style_encoder = ParameterEmbedingNet(StyleEncodeBlock, in_size, in_type="image")
         relay_in = in_channels * min_in_size * min_in_size
         self.relay_convs = nn.Sequential(
@@ -173,7 +187,10 @@ class ComposeNet(nn.Module):
     
     def forward(self, x, y=None):
         # 
-        y_cls, y_cnt_style = self.style_encoder(x, x)
+        if y is not None:
+            y_cls, y_cnt_style = self.embeding_block(y["cls"], y["cnt_style"])
+        else:
+            y_cls, y_cnt_style = self.style_encoder(x, x)
         
         down_feats = []
         for m in self.down:
@@ -214,9 +231,6 @@ class ComposeNet(nn.Module):
             # "latent_label_cls": x_label_cls, 
             # "latent_style_cls": x_style_cls, 
         }
-        if self.training:
-            output["y_cls"] = y_cls
-            output["y_cnt_style"] = y_cnt_style
         return output
 
 class Discriminator(nn.Module):
@@ -247,17 +261,17 @@ class Discriminator(nn.Module):
         #     Linear(in_size, 2, activate=None)
         # )
 
-    def forward(self, x, y_cls, y_cnt_style):
+    def forward(self, x, y):
         x = self.conv_first(x)
         x = self.backbone(x)
         x = x.reshape(x.size(0), -1)
         
-        y_cls, y_cnt_style = self.embeding_block(y_cls, y_cnt_style)
+        y_cls, y_cnt_style = self.embeding_block(y["cls"], y["cnt_style"])
         x = torch.cat([x, y_cls, y_cnt_style], dim=1)
 
         adv_res = self.adv_convs(x).sigmoid()
         # aux_res = self.aux_convs(x).softmax(dim=-1)
-        return adv_res, y_cls, y_cnt_style
+        return adv_res
 
 if __name__ == "__main__":
     print("")
