@@ -136,7 +136,9 @@ class ComposeNet(nn.Module):
         #     Linear(relay_in + LABEL_EMBED + STYLE_EMBED, relay_in), 
         #     Linear(relay_in, relay_in), 
         # )
-        relay_in = relay_in // 2
+        # self.latent_guiding_group = 4
+        # 2, 1, 1
+        # relay_in = relay_in // self.latent_guiding_group
         self.label_classify = nn.Sequential(
             Linear(relay_in, relay_in // 2), 
             Linear(relay_in // 2, relay_in // 4), 
@@ -187,9 +189,11 @@ class ComposeNet(nn.Module):
         # x = x.reshape(b, c, h, w)
         x_logits = x
         x_logits = x_logits.reshape(x_logits.size(0), -1)
-        half = x_logits.size(1) // 2
-        x_label_cls = self.label_classify(x_logits[:, :half])
-        x_style_cls = self.style_classify(x_logits[:, half:])
+        # group_size = x_logits.size(1) // self.latent_guiding_group
+        # x_label_cls = self.label_classify(x_logits[:, -group_size*2:-group_size])
+        # x_style_cls = self.style_classify(x_logits[:, -group_size:])
+        x_label_cls = self.label_classify(x_logits)
+        x_style_cls = self.style_classify(x_logits)
         # 
         for i in range(len(self.up)):
             idx = len(self.up) - 1 - i

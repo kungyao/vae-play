@@ -118,7 +118,7 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         loss_egde = loss_egde * 10
         # 
         loss_latent_label = F.cross_entropy(pred_latent_label_cls, labels)
-        loss_latent_label = loss_latent_label * 1.0
+        loss_latent_label = loss_latent_label * 5.0
         # 
         loss_latent_style = F.cross_entropy(pred_latent_style_cls, train_content_styles)
         loss_latent_style = loss_latent_style * 1.0
