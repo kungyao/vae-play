@@ -33,8 +33,10 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
     avg_loss = {
         "loss_edge": 0,
         "loss_mask": 0, 
-        "loss_latent_label": 0, 
-        "loss_latent_style": 0, 
+        # "loss_latent_label": 0, 
+        # "loss_latent_style": 0, 
+        "loss_cls_embed": 0, 
+        "loss_style_embed": 0, 
         "d_adv_real": 0, 
         "d_adv_fake": 0, 
         "loss_g_adv": 0, 
@@ -91,8 +93,8 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
             preds = net(kana_imgs)
             kana_pred_merge = torch.cat([preds["masks"].detach(), preds["edges"].detach()], dim=1)
 
-        d_gt_adv = disc(kana_gt_merge, label_disc, train_content_styles)
-        d_pred_adv = disc(kana_pred_merge, label_disc, train_content_styles)
+        d_gt_adv, _, _ = disc(kana_gt_merge, label_disc, train_content_styles) #  d_gt_cls_embed, d_gt_style_embed
+        d_pred_adv, _, _ = disc(kana_pred_merge, label_disc, train_content_styles) #  d_pred_cls_embed, d_pred_style_embed 
 
         optim_disc.zero_grad()
         d_adv_real = F.binary_cross_entropy(d_gt_adv, torch.ones((b, 1), device=d_gt_adv.device)) # + F.cross_entropy(d_gt_cls, labels)
@@ -105,10 +107,12 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         preds = net(kana_imgs)
         pred_masks = preds["masks"]
         pred_edges = preds["edges"]
-        pred_latent_label_cls = preds["latent_label_cls"]
-        pred_latent_style_cls = preds["latent_style_cls"]
+        pred_cls_embed = preds["y_cls"]
+        pred_style_embed = preds["y_cnt_style"]
+        # pred_latent_label_cls = preds["latent_label_cls"]
+        # pred_latent_style_cls = preds["latent_style_cls"]
 
-        g_adv = disc(torch.cat([pred_masks, pred_edges], dim=1), label_disc, train_content_styles)
+        g_adv, g_cls_embed, g_style_embed = disc(torch.cat([pred_masks, pred_edges], dim=1), label_disc, train_content_styles)
 
         optim.zero_grad()
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, kana_masks) + compute_dice_loss(pred_masks.sigmoid(), kana_masks)
@@ -116,25 +120,30 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         # 
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, kana_edge_masks) + compute_dice_loss(pred_edges.sigmoid(), kana_edge_masks)
         loss_egde = loss_egde * 10
-        # 
-        loss_latent_label = F.cross_entropy(pred_latent_label_cls, labels)
-        loss_latent_label = loss_latent_label * 5.0
-        # 
-        loss_latent_style = F.cross_entropy(pred_latent_style_cls, train_content_styles)
-        loss_latent_style = loss_latent_style * 1.0
+        # # 
+        # loss_latent_label = F.cross_entropy(pred_latent_label_cls, labels)
+        # loss_latent_label = loss_latent_label * 5.0
+        # # 
+        # loss_latent_style = F.cross_entropy(pred_latent_style_cls, train_content_styles)
+        # loss_latent_style = loss_latent_style * 1.0
         # 
         loss_g_adv = F.binary_cross_entropy(g_adv, torch.ones((b, 1), device=g_adv.device))
         loss_g_adv = loss_g_adv * 2
         # 
-        losses = loss_egde + loss_mask + loss_g_adv + loss_latent_label + loss_latent_style
+        loss_cls_embed = F.l1_loss(pred_cls_embed, g_cls_embed)
+        loss_style_embed = F.l1_loss(pred_style_embed, g_style_embed)
+        ## + loss_latent_label + loss_latent_style
+        losses = loss_egde + loss_mask + loss_g_adv + loss_cls_embed + loss_style_embed
         losses.backward()
         optim.step()
-        
+
         next_count = count + kana_imgs.size(0)
         avg_loss["loss_edge"] = (avg_loss["loss_edge"] * count + loss_egde.item()) / next_count
         avg_loss["loss_mask"] = (avg_loss["loss_mask"] * count + loss_mask.item()) / next_count
-        avg_loss["loss_latent_label"] = (avg_loss["loss_latent_label"] * count + loss_latent_label.item()) / next_count
-        avg_loss["loss_latent_style"] = (avg_loss["loss_latent_style"] * count + loss_latent_style.item()) / next_count
+        # avg_loss["loss_latent_label"] = (avg_loss["loss_latent_label"] * count + loss_latent_label.item()) / next_count
+        # avg_loss["loss_latent_style"] = (avg_loss["loss_latent_style"] * count + loss_latent_style.item()) / next_count
+        avg_loss["loss_cls_embed"] = (avg_loss["loss_cls_embed"] * count + loss_cls_embed.item()) / next_count
+        avg_loss["loss_style_embed"] = (avg_loss["loss_style_embed"] * count + loss_style_embed.item()) / next_count
         avg_loss["d_adv_real"] = (avg_loss["d_adv_real"] * count + d_adv_real.item()) / next_count
         avg_loss["d_adv_fake"] = (avg_loss["d_adv_fake"] * count + d_adv_fake.item()) / next_count
         avg_loss["loss_g_adv"] = (avg_loss["loss_g_adv"] * count + loss_g_adv.item()) / next_count

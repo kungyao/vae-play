@@ -23,7 +23,8 @@ class EmbedingBlock(nn.Module):
         super().__init__()
         self.embeding = nn.Embedding(in_channels, out_channels)
         self.convs = nn.Sequential(
-            Linear(out_channels, out_channels, activate="lrelu")
+            Linear(out_channels, out_channels, activate="lrelu"), 
+            Linear(out_channels, out_channels, activate="lrelu"), 
         )
 
     def forward(self, x):
@@ -113,7 +114,7 @@ class ComposeNet(nn.Module):
         super(ComposeNet, self).__init__()
         # Feature extract
         min_channel = 64
-        max_channel = 2048
+        max_channel = 512
         min_in_size = int(np.power(2, 2))
         repeat_num = int(np.log2(in_size // min_in_size))
         
@@ -129,28 +130,28 @@ class ComposeNet(nn.Module):
             in_channels = out_channels
             out_channels = min(in_channels * 2, max_channel)
 
-        # self.embeding_block = ParameterEmbedingNet(EmbedingBlock, in_size, in_type="embed")
-        # self.style_encoder = ParameterEmbedingNet(StyleEncodeBlock, in_size, in_type="image")
+        self.style_encoder = ParameterEmbedingNet(StyleEncodeBlock, in_size, in_type="image")
         relay_in = in_channels * min_in_size * min_in_size
-        # self.relay_convs = nn.Sequential(
-        #     Linear(relay_in + LABEL_EMBED + STYLE_EMBED, relay_in), 
-        #     Linear(relay_in, relay_in), 
-        # )
+        self.relay_convs = nn.Sequential(
+            Linear(relay_in + LABEL_EMBED + STYLE_EMBED, relay_in), 
+            Linear(relay_in, relay_in), 
+        )
+
         # self.latent_guiding_group = 4
         # 2, 1, 1
         # relay_in = relay_in // self.latent_guiding_group
-        self.label_classify = nn.Sequential(
-            Linear(relay_in, relay_in // 2), 
-            Linear(relay_in // 2, relay_in // 4), 
-            Linear(relay_in // 4, 143, activate=None), 
-            nn.Softmax()
-        )
-        self.style_classify = nn.Sequential(
-            Linear(relay_in, relay_in // 2), 
-            Linear(relay_in // 2, relay_in // 4), 
-            Linear(relay_in // 4, 2, activate=None), 
-            nn.Softmax()
-        )
+        # self.label_classify = nn.Sequential(
+        #     Linear(relay_in, relay_in // 2), 
+        #     Linear(relay_in // 2, relay_in // 4), 
+        #     Linear(relay_in // 4, 143, activate=None), 
+        #     nn.Softmax()
+        # )
+        # self.style_classify = nn.Sequential(
+        #     Linear(relay_in, relay_in // 2), 
+        #     Linear(relay_in // 2, relay_in // 4), 
+        #     Linear(relay_in // 4, 2, activate=None), 
+        #     nn.Softmax()
+        # )
 
         self.up = nn.ModuleList()
         self.skip = nn.ModuleList()
@@ -169,31 +170,29 @@ class ComposeNet(nn.Module):
         self.mask_net = MaskNet(min_channel)
         # Generate edge mask
         self.edge_net = EdgeNet(min_channel)
-
-    def forward(self, x):
-        # # 
-        # if y is not None:
-        #     y_cls, y_cnt_style = self.embeding_block(y["cls"], y["cnt_style"])
-        # else:
-        #     y_cls, y_cnt_style = self.style_encoder(x, x)
+    
+    def forward(self, x, y=None):
         # 
+        y_cls, y_cnt_style = self.style_encoder(x, x)
+        
         down_feats = []
         for m in self.down:
             x = m(x)
             down_feats.append(x)
-        # # 
-        # b, c, h, w = x.shape
-        # x = x.reshape(b, -1)
-        # x = torch.cat([x, y_cls, y_cnt_style], dim=1)
-        # x = self.relay_convs(x)
-        # x = x.reshape(b, c, h, w)
-        x_logits = x
-        x_logits = x_logits.reshape(x_logits.size(0), -1)
-        # group_size = x_logits.size(1) // self.latent_guiding_group
-        # x_label_cls = self.label_classify(x_logits[:, -group_size*2:-group_size])
-        # x_style_cls = self.style_classify(x_logits[:, -group_size:])
-        x_label_cls = self.label_classify(x_logits)
-        x_style_cls = self.style_classify(x_logits)
+        # 
+        b, c, h, w = x.shape
+        x = x.reshape(b, -1)
+        x = torch.cat([x, y_cls, y_cnt_style], dim=1)
+        x = self.relay_convs(x)
+        x = x.reshape(b, c, h, w)
+        # 
+        # x_logits = x
+        # x_logits = x_logits.reshape(x_logits.size(0), -1)
+        # # group_size = x_logits.size(1) // self.latent_guiding_group
+        # # x_label_cls = self.label_classify(x_logits[:, -group_size*2:-group_size])
+        # # x_style_cls = self.style_classify(x_logits[:, -group_size:])
+        # x_label_cls = self.label_classify(x_logits)
+        # x_style_cls = self.style_classify(x_logits)
         # 
         for i in range(len(self.up)):
             idx = len(self.up) - 1 - i
@@ -209,14 +208,16 @@ class ComposeNet(nn.Module):
         # # 
         # font_cls_out = self.font_cls(feature)
         # content_style_cls_out = self.content_style_cls(feature)
-        return {
+        output = {
             "edges": edge_out,
             "masks": mask_out, 
-            "latent_label_cls": x_label_cls, 
-            "latent_style_cls": x_style_cls, 
-            # "labels": font_cls_out, 
-            # "content_style": content_style_cls_out
+            # "latent_label_cls": x_label_cls, 
+            # "latent_style_cls": x_style_cls, 
         }
+        if self.training:
+            output["y_cls"] = y_cls
+            output["y_cnt_style"] = y_cnt_style
+        return output
 
 class Discriminator(nn.Module):
     def __init__(self, in_size, in_channels, num_of_classes):
@@ -226,12 +227,13 @@ class Discriminator(nn.Module):
             Conv2d(64, 128, 3, stride=2, bn="instance", activate="lrelu"), 
             Conv2d(128, 256, 3, stride=2, bn="instance", activate="lrelu"), 
             Conv2d(256, 256, 3, stride=2, bn="instance", activate="lrelu"),
+            Conv2d(256, 512, 3, stride=2, bn="instance", activate="lrelu"),
         )
 
         self.embeding_block = ParameterEmbedingNet(EmbedingBlock, in_size, in_type="embed")
 
-        in_size = in_size // 16
-        in_size = 256 * in_size * in_size
+        in_size = in_size // 32
+        in_size = 512 * in_size * in_size
 
         self.adv_convs = nn.Sequential(
             Linear(in_size + LABEL_EMBED + STYLE_EMBED, in_size // 2, activate="lrelu"), 
@@ -255,7 +257,7 @@ class Discriminator(nn.Module):
 
         adv_res = self.adv_convs(x).sigmoid()
         # aux_res = self.aux_convs(x).softmax(dim=-1)
-        return adv_res #, aux_res
+        return adv_res, y_cls, y_cnt_style
 
 if __name__ == "__main__":
     print("")
