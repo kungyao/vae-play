@@ -86,11 +86,11 @@ def prepare_syhthesis_data(base_img: Image.Image, target, kana_imgs, kana_masks,
     train_edge_masks = []
     train_content_styles = []
     for kana_img, kana_mask in zip(kana_imgs, kana_masks):
-        kernel_size = int(round(np.random.uniform(8, 21), 0)) // 2
+        kernel_size = int(round(np.random.uniform(4, 17), 0)) // 2
         params = {
             'scale' : np.random.uniform(0.707, 1.414),
-            'angle' : np.random.uniform(-15, 15),
-            'shear' : np.random.uniform(-0.3, 0.3),
+            'angle' : 0, # np.random.uniform(-15, 15),
+            'shear' : np.random.uniform(-0.8, 0.8),
             # round to digit zero
             'kernel_size' : kernel_size + (kernel_size+1)%2, 
             'p' : np.random.uniform(0.0, 1.0)
@@ -135,6 +135,21 @@ def prepare_syhthesis_data(base_img: Image.Image, target, kana_imgs, kana_masks,
         
     return train_imgs, train_masks, train_edge_masks, train_content_styles
 
+def to_n_n(img: Image.Image, fill):
+    w, h = img.size
+    if w != h:
+        if w > h:
+            anchor = (0, (w - h)//2)
+            new_size = w
+        elif h > w:
+            anchor = ((h - w)//2, 0)
+            new_size = h
+        new_img = Image.new(img.mode, (new_size, new_size), color=fill)
+        new_img.paste(img, anchor)
+        return new_img
+    else:
+        return img
+
 class KanaImageDataset(Dataset):
     def __init__(self, image_folder):
         self.imgs = []
@@ -150,6 +165,7 @@ class KanaImageDataset(Dataset):
         img = img.point(lambda p: p>128 and 255)
         img = img.convert('RGB')
         img = ImageOps.expand(img, border=11, fill=(255, 255, 255))
+        img = to_n_n(img, (255,255,255))
         return img
 
     def __len__(self):
@@ -184,22 +200,24 @@ class AugmentOperator(object):
 
     @staticmethod
     def do_shear(img, mask, shear):
-        def pil_space_filled_shear_(img_, shear, mode, fill):
-            def calculate_size_(width, height, shear):
-                # add abs for minus shear
-                new_w = width + abs(int(shear*height))
-                new_h = height
-                return new_w, new_h
-            w, h = img_.size
-            new_w, new_h = calculate_size_(w, h, shear)
-            new_img = Image.new(mode, (new_w, new_h), color=fill)
-            # add if-else for minus shear
-            new_img.paste(img_, ((new_w - w) if shear >= 0 else 0, 0))
-            new_img = new_img.transform((new_w, new_h), Image.AFFINE, data=(1, shear, 0, 0, 1, 0), resample=Image.NEAREST, fillcolor=fill)
-            return new_img
-        new_img = pil_space_filled_shear_(img, shear, "RGB", (255, 255, 255))
-        new_mask = pil_space_filled_shear_(mask, shear, "L", (0))
-        # new_img, new_mask = recalculate_bounding_box(new_img, new_mask)
+        r = np.random.rand()
+        w, h = img.size
+        if r <= 0.5:
+            new_w = w + abs(int(shear*h))
+            new_h = h
+            paste_anchor = ((new_w - w) if shear >= 0 else 0, 0)
+            transform_data = (1, shear, 0, 0, 1, 0)
+        else:
+            new_w = w
+            new_h = h + abs(int(shear*w))
+            paste_anchor = (0, (new_h - h) if shear >= 0 else 0)
+            transform_data = (1, 0, 0, shear, 1, 0)
+        new_img = Image.new(img.mode, (new_w, new_h), color=(255, 255, 255))
+        new_img.paste(img, paste_anchor)
+        new_img = new_img.transform((new_w, new_h), Image.AFFINE, data=transform_data, resample=Image.NEAREST, fillcolor=(255, 255, 255))
+        new_mask = Image.new(mask.mode, (new_w, new_h), color=(0))
+        new_mask.paste(mask, paste_anchor)
+        new_mask = new_mask.transform((new_w, new_h), Image.AFFINE, data=transform_data, resample=Image.NEAREST, fillcolor=(0))
         return new_img, new_mask
 
     @staticmethod
@@ -304,21 +322,6 @@ class AugmentOperator(object):
         mask = mask.crop(true_box)
         content_mask = content_mask.crop(true_box)
         edge_mask = edge_mask.crop(true_box)
-
-        def to_n_n(img: Image.Image, fill):
-            w, h = img.size
-            if w != h:
-                if w > h:
-                    anchor = (0, (w - h)//2)
-                    new_size = w
-                elif h > w:
-                    anchor = ((h - w)//2, 0)
-                    new_size = h
-                new_img = Image.new(img.mode, (new_size, new_size), color=fill)
-                new_img.paste(img, anchor)
-                return new_img
-            else:
-                return img
 
         img = to_n_n(img, (255, 255, 255))
         mask = to_n_n(mask, (0))
