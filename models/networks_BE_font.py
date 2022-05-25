@@ -113,8 +113,8 @@ class ComposeNet(nn.Module):
         super(ComposeNet, self).__init__()
         # Feature extract
         min_channel = 64
-        max_channel = 512
-        min_in_size = int(np.power(2, 3))
+        max_channel = 2048
+        min_in_size = int(np.power(2, 2))
         repeat_num = int(np.log2(in_size // min_in_size))
         
         self.down = nn.ModuleList()
@@ -138,15 +138,15 @@ class ComposeNet(nn.Module):
         # )
         relay_in = relay_in // 2
         self.label_classify = nn.Sequential(
-            Linear(relay_in, relay_in), 
-            Linear(relay_in, relay_in), 
-            Linear(relay_in, 143, activate=None), 
+            Linear(relay_in, relay_in // 2), 
+            Linear(relay_in // 2, relay_in // 4), 
+            Linear(relay_in // 4, 143, activate=None), 
             nn.Softmax()
         )
         self.style_classify = nn.Sequential(
-            Linear(relay_in, relay_in), 
-            Linear(relay_in, relay_in), 
-            Linear(relay_in, 2, activate=None), 
+            Linear(relay_in, relay_in // 2), 
+            Linear(relay_in // 2, relay_in // 4), 
+            Linear(relay_in // 4, 2, activate=None), 
             nn.Softmax()
         )
 
@@ -230,9 +230,9 @@ class Discriminator(nn.Module):
         in_size = 256 * in_size * in_size
 
         self.adv_convs = nn.Sequential(
-            Linear(in_size + LABEL_EMBED + STYLE_EMBED, in_size, activate="lrelu"), 
-            Linear(in_size, in_size, activate="lrelu"), 
-            Linear(in_size, 1, activate=None)
+            Linear(in_size + LABEL_EMBED + STYLE_EMBED, in_size // 2, activate="lrelu"), 
+            Linear(in_size // 2, in_size // 4, activate="lrelu"), 
+            Linear(in_size // 4, 1, activate=None)
         )
 
         # self.aux_convs = nn.Sequential(
