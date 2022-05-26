@@ -240,38 +240,38 @@ class Discriminator(nn.Module):
         self.backbone = nn.Sequential(
             Conv2d(64, 128, 3, stride=2, bn="instance", activate="lrelu"), 
             Conv2d(128, 256, 3, stride=2, bn="instance", activate="lrelu"), 
-            Conv2d(256, 256, 3, stride=2, bn="instance", activate="lrelu"),
             Conv2d(256, 512, 3, stride=2, bn="instance", activate="lrelu"),
+            Conv2d(512, 1024, 3, stride=2, bn="instance", activate="lrelu"),
         )
-
-        self.embeding_block = ParameterEmbedingNet(EmbedingBlock, in_size, in_type="embed")
-
+        
+        # self.embeding_block = ParameterEmbedingNet(EmbedingBlock, in_size, in_type="embed")
         in_size = in_size // 32
-        in_size = 512 * in_size * in_size
+        in_size = 1024 * in_size * in_size
 
+        #  + LABEL_EMBED + STYLE_EMBED
         self.adv_convs = nn.Sequential(
-            Linear(in_size + LABEL_EMBED + STYLE_EMBED, in_size // 2, activate="lrelu"), 
+            Linear(in_size, in_size // 2, activate="lrelu"), 
             Linear(in_size // 2, in_size // 4, activate="lrelu"), 
             Linear(in_size // 4, 1, activate=None)
         )
-
-        # self.aux_convs = nn.Sequential(
-        #     Linear(in_size * 2, in_size, activate="lrelu"), 
-        #     Linear(in_size, in_size, activate="lrelu"), 
-        #     Linear(in_size, 2, activate=None)
-        # )
+        #  + LABEL_EMBED + STYLE_EMBED
+        self.aux_convs = nn.Sequential(
+            Linear(in_size, in_size // 2, activate="lrelu"), 
+            Linear(in_size // 2, in_size // 4, activate="lrelu"), 
+            Linear(in_size // 4, num_of_classes, activate=None)
+        )
 
     def forward(self, x, y):
         x = self.conv_first(x)
         x = self.backbone(x)
         x = x.reshape(x.size(0), -1)
         
-        y_cls, y_cnt_style = self.embeding_block(y["cls"], y["cnt_style"])
-        x = torch.cat([x, y_cls, y_cnt_style], dim=1)
+        # y_cls, y_cnt_style = self.embeding_block(y["cls"], y["cnt_style"])
+        # x = torch.cat([x, y_cls, y_cnt_style], dim=1)
 
         adv_res = self.adv_convs(x).sigmoid()
-        # aux_res = self.aux_convs(x).softmax(dim=-1)
-        return adv_res
+        aux_res = self.aux_convs(x)
+        return adv_res, aux_res
 
 if __name__ == "__main__":
     print("")

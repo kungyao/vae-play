@@ -37,8 +37,10 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         # "loss_latent_label": 0, 
         # "loss_latent_style": 0, 
         "d_adv_real": 0, 
+        "d_aux_real": 0, 
         "d_adv_fake": 0, 
         "loss_g_adv": 0, 
+        "loss_g_aux": 0, 
         "loss_embed": 0, 
     }
 
@@ -93,13 +95,14 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
             preds = net(kana_imgs, y=train_y_map)
             kana_pred_merge = torch.cat([preds["masks"].detach(), preds["edges"].detach()], dim=1)
 
-        d_gt_adv = disc(kana_gt_merge, train_y_map) #  d_gt_cls_embed, d_gt_style_embed
-        d_pred_adv = disc(kana_pred_merge, train_y_map) #  d_pred_cls_embed, d_pred_style_embed 
+        d_gt_adv, d_adv_aux = disc(kana_gt_merge, train_y_map) #  d_gt_cls_embed, d_gt_style_embed
+        d_pred_adv, d_pred_aux = disc(kana_pred_merge, train_y_map) #  d_pred_cls_embed, d_pred_style_embed 
 
         optim_disc.zero_grad()
-        d_adv_real = F.binary_cross_entropy(d_gt_adv, torch.ones((b, 1), device=d_gt_adv.device)) # + F.cross_entropy(d_gt_cls, labels)
+        d_adv_real = F.binary_cross_entropy(d_gt_adv, torch.ones((b, 1), device=d_gt_adv.device)) 
+        d_aux_real = F.cross_entropy(d_adv_aux, labels)
         d_adv_fake = F.binary_cross_entropy(d_pred_adv, torch.zeros((b, 1), device=d_pred_adv.device)) # + F.cross_entropy(d_pred_cls, labels)
-        d_adv_loss = (d_adv_real + d_adv_fake) * 0.5
+        d_adv_loss = (d_adv_real + d_adv_fake) * 0.5 + d_aux_real
         d_adv_loss.backward()
         optim_disc.step()
 
@@ -112,7 +115,7 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         # pred_latent_label_cls = preds["latent_label_cls"]
         # pred_latent_style_cls = preds["latent_style_cls"]
 
-        g_adv = disc(torch.cat([pred_masks, pred_edges], dim=1), train_y_map)
+        g_adv, g_aux = disc(torch.cat([pred_masks, pred_edges], dim=1), train_y_map)
 
         optim.zero_grad()
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, kana_masks) + compute_dice_loss(pred_masks.sigmoid(), kana_masks)
@@ -130,8 +133,11 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         loss_g_adv = F.binary_cross_entropy(g_adv, torch.ones((b, 1), device=g_adv.device))
         loss_g_adv = loss_g_adv * 2
         # 
+        loss_g_aux = F.cross_entropy(g_aux, labels)
+        loss_g_aux = loss_g_adv * 5
+        # 
         ## + loss_latent_label + loss_latent_style
-        losses = loss_egde + loss_mask + loss_g_adv
+        losses = loss_egde + loss_mask + loss_g_adv + loss_g_aux
         losses.backward()
         optim.step()
 
@@ -172,8 +178,10 @@ def train(args, epoch, models, optims, base_loader, kana_loader, transform):
         # avg_loss["loss_latent_label"] = (avg_loss["loss_latent_label"] * count + loss_latent_label.item()) / next_count
         # avg_loss["loss_latent_style"] = (avg_loss["loss_latent_style"] * count + loss_latent_style.item()) / next_count
         avg_loss["d_adv_real"] = (avg_loss["d_adv_real"] * count + d_adv_real.item()) / next_count
+        avg_loss["d_aux_real"] = (avg_loss["d_aux_real"] * count + d_aux_real.item()) / next_count
         avg_loss["d_adv_fake"] = (avg_loss["d_adv_fake"] * count + d_adv_fake.item()) / next_count
         avg_loss["loss_g_adv"] = (avg_loss["loss_g_adv"] * count + loss_g_adv.item()) / next_count
+        avg_loss["loss_g_aux"] = (avg_loss["loss_g_aux"] * count + loss_g_aux.item()) / next_count
         avg_loss["loss_embed"] = (avg_loss["loss_embed"] * count + loss_embed.item()) / next_count
         count = next_count
 
@@ -210,7 +218,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
     # parser.add_argument('--path', type=str, dest='path', default="D:/Manga/bubble-gen-label")
     # 
-    parser.add_argument('--lr', type=float, dest='lr', default=5e-4)
+    parser.add_argument('--lr', type=float, dest='lr', default=1e-4)
     parser.add_argument('--gpu', type=int, dest='gpu', default=0)
     parser.add_argument('--epoch', type=int, dest='epochs', default=1)
     # parser.add_argument('--iterations', type=int, dest='iterations', default=1000)
