@@ -244,13 +244,13 @@ class Classifier(nn.Module):
             Conv2d(512, 1024, 3, stride=2, bn="instance", activate="lrelu"),
         )
         
-        # self.embeding_block = ParameterEmbedingNet(EmbedingBlock, in_size, in_type="embed")
+        self.embeding_block = ParameterEmbedingNet(EmbedingBlock, in_size, in_type="embed")
         in_size = in_size // 32
         in_size = 1024 * in_size * in_size
 
-        #  + LABEL_EMBED + STYLE_EMBED
+        # 
         self.cls_convs = nn.Sequential(
-            Linear(in_size, in_size // 2, activate="lrelu"), 
+            Linear(in_size + LABEL_EMBED + STYLE_EMBED, in_size // 2, activate="lrelu"), 
             Linear(in_size // 2, in_size // 4, activate="lrelu"), 
             Linear(in_size // 4, num_of_classes, activate=None)
         )
@@ -260,8 +260,8 @@ class Classifier(nn.Module):
         x = self.backbone(x)
         x = x.reshape(x.size(0), -1)
 
-        # y_cls, y_cnt_style = self.embeding_block(y["cls"], y["cnt_style"])
-        # x = torch.cat([x, y_cls, y_cnt_style], dim=1)
+        y_cls, y_cnt_style = self.embeding_block(y["cls"], y["cnt_style"])
+        x = torch.cat([x, y_cls, y_cnt_style], dim=1)
 
         x = self.cls_convs(x)
         return x
