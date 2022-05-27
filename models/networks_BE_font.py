@@ -233,7 +233,7 @@ class ComposeNet(nn.Module):
         }
         return output
 
-class Discriminator(nn.Module):
+class Classifier(nn.Module):
     def __init__(self, in_size, in_channels, num_of_classes):
         super().__init__()
         self.conv_first = Conv2d(in_channels, 64, 3, stride=2, bn="instance", activate="lrelu")
@@ -249,28 +249,32 @@ class Discriminator(nn.Module):
         in_size = 1024 * in_size * in_size
 
         #  + LABEL_EMBED + STYLE_EMBED
-        self.adv_convs = nn.Sequential(
-            Linear(in_size, in_size // 2, activate="lrelu"), 
-            Linear(in_size // 2, in_size // 4, activate="lrelu"), 
-            Linear(in_size // 4, 1, activate=None)
-        )
-        #  + LABEL_EMBED + STYLE_EMBED
-        self.aux_convs = nn.Sequential(
+        self.cls_convs = nn.Sequential(
             Linear(in_size, in_size // 2, activate="lrelu"), 
             Linear(in_size // 2, in_size // 4, activate="lrelu"), 
             Linear(in_size // 4, num_of_classes, activate=None)
         )
-
+    
     def forward(self, x, y):
         x = self.conv_first(x)
         x = self.backbone(x)
         x = x.reshape(x.size(0), -1)
-        
+
         # y_cls, y_cnt_style = self.embeding_block(y["cls"], y["cnt_style"])
         # x = torch.cat([x, y_cls, y_cnt_style], dim=1)
 
-        adv_res = self.adv_convs(x).sigmoid()
-        aux_res = self.aux_convs(x)
+        x = self.cls_convs(x)
+        return x
+
+class Discriminator(nn.Module):
+    def __init__(self, in_size, in_channels, num_of_classes):
+        super().__init__()
+        self.adv_convs = Classifier(in_size, in_channels, 1)
+        self.aux_convs = Classifier(in_size, in_channels, num_of_classes)
+
+    def forward(self, x, y):
+        adv_res = self.adv_convs(x, y).sigmoid()
+        aux_res = self.aux_convs(x, y)
         return adv_res, aux_res
 
 if __name__ == "__main__":
