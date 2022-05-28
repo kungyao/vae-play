@@ -55,11 +55,16 @@ def train(args, epoch, iterations, net, optim, train_loader):
 
         loss_class = F.cross_entropy(preds["classes"], labels)
         
+        contour_pred_frequency = torch.cat(preds["target_frequency"], dim=0)
         contour_target_frequency = torch.cat([t["points"][:, 5] for t in annotation], dim=0)
+        contour_target_frequency_key = contour_target_frequency > 0.9
         loss_frequency = F.l1_loss(
-            torch.cat(preds["target_frequency"], dim=0), 
+            contour_pred_frequency, 
             contour_target_frequency
-        )
+        ) + F.l1_loss(
+            contour_pred_frequency[contour_target_frequency_key], 
+            contour_target_frequency[contour_target_frequency_key]
+        ) * 5
 
         contour_target_gt = torch.cat([t["points"][:, 2:4] for t in annotation], dim=0) * VALUE_WEIGHT
         loss_total_regress = F.l1_loss(
@@ -82,7 +87,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
                 loss_key_regress.append(torch.tensor(0.))
         loss_key_regress = torch.mean(torch.stack(loss_key_regress, dim=0))
 
-        losses = loss_class + loss_frequency * 2 + (loss_total_regress * 2 + loss_key_regress) * 10
+        losses = loss_class + loss_frequency * 2 + loss_total_regress * 2 + loss_key_regress * 10
 
         optim.zero_grad()
         losses.backward()

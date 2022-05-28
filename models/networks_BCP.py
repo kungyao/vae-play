@@ -112,25 +112,31 @@ class LinePredictor(nn.Module):
         # embed_size = 2 + 1
         # self.value_encoder = ValueEncoder(embed_size, in_channels, pt_size=pt_size)
 
+        in_channels = in_channels * (1) # Plus embedding
+
         self.batch_attention = nn.Sequential(
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size)
         )
+
+        self.frequency_head = nn.Sequential(
+            Linear(in_channels, in_channels, activate='lrelu'), 
+            Linear(in_channels, in_channels, activate='lrelu')
+        )
+
+        self.frequency_pred = nn.Sequential(
+            Linear(in_channels, 1, activate=None),
+            nn.Sigmoid()
+        )
+
         # -10~10
         # -10~10
         # offset_x, offset_y
-        in_channels = in_channels * (1) # Plus embedding
         self.params_pred = nn.Sequential(
-            Linear(in_channels, in_channels, activate='lrelu'), 
-            Linear(in_channels, in_channels, activate=None), 
+            Linear(in_channels * 2, in_channels * 2, activate='lrelu'), 
+            Linear(in_channels * 2, in_channels, activate='lrelu'), 
             Linear(in_channels, 2, activate=None)
-        )
-        self.frequency_pred = nn.Sequential(
-            Linear(in_channels, in_channels, activate='relu'), 
-            Linear(in_channels, in_channels, activate='relu'), 
-            Linear(in_channels, 1, activate=None),
-            nn.Sigmoid()
         )
 
     def process(self, x: torch.Tensor, contours: torch.Tensor):
@@ -154,7 +160,7 @@ class LinePredictor(nn.Module):
         resamples = torch.stack(resamples, dim=0)
         return resamples
     
-    def forward(self, x: torch.Tensor, contours: torch.Tensor, cls_x:torch.Tensor):
+    def forward(self, x: torch.Tensor, contours: torch.Tensor, x_cls: torch.Tensor):
         b, c, h, w = x.shape
         # Sample points on feature map. (batch, pt, in_channel(256)).
         x_pt_feature = self.process(x, contours) 
@@ -181,8 +187,10 @@ class LinePredictor(nn.Module):
         x = torch.cat(tmp_x, dim=0)
         # print(x.shape)
         # 
+        x_freq = self.frequency_head(x)
+        x = torch.cat([x, x_freq], dim=1)
         x_pred = self.params_pred(x) 
-        x_freq = self.frequency_pred(x).squeeze()
+        x_freq = self.frequency_pred(x_freq).squeeze()
         # print(x.shape)
         # x_freq = x_freq.squeeze()
         # tmp_freq = []
@@ -191,18 +199,53 @@ class LinePredictor(nn.Module):
         # x_freq = torch.cat(tmp_freq, dim=0)
         return x_pred, x_freq
 
+class ClassPredictor(nn.Module):
+    def __init__(self, in_size, in_channels, num_of_classes):
+        super().__init__()
+        max_channels = 2048
+
+        self.convs = []
+        in_channels = in_channels
+        out_channels = min(in_channels * 2, max_channels)
+        repeat_num = int(np.log2(in_size)) - 1
+        for _ in range(repeat_num):
+            # self.convs.append(nn.Sequential(
+            #     Conv2d(in_channels, out_channels, 3, stride=2, bn="instance"), 
+            #     Conv2d(out_channels, out_channels, 3, stride=1, bn="instance")
+            # ))
+            self.convs.append(Conv2d(in_channels, out_channels, 3, stride=2))
+            in_channels = out_channels
+            out_channels = min(in_channels * 2, max_channels)
+        self.convs.append(nn.AdaptiveAvgPool2d((1, 1)))
+        self.convs = nn.Sequential(*self.convs)
+        
+        in_size = in_channels * 1 * 1
+        self.cls_convs = nn.Sequential(
+            Linear(in_size, in_size // 2, activate="lrelu"), 
+            Linear(in_size // 2, in_size // 4, activate="lrelu"), 
+            Linear(in_size // 4, num_of_classes, activate=None)
+        )
+
+    def forward(self, x):
+        x = self.convs(x)
+        x = x.reshape(x.size(0), -1)
+        x = self.cls_convs(x)
+        return x
+
 class ComposeNet(nn.Module):
     def __init__(self, image_size, pt_size=4096):
         super(ComposeNet, self).__init__()
         self.max_point = pt_size
-        # 實心or射線
-        self.cls_classifier = nn.Sequential(
-            resnet18(pretrained=True), 
-            nn.Linear(1000, 2)
-        )
 
         self.add_coord = AddCoords(if_normalize=True)
         self.encoder = ContentEndoer(3 + 2)
+        # 實心or射線
+        # self.cls_classifier = nn.Sequential(
+        #     resnet18(pretrained=True), 
+        #     nn.Linear(1000, 2)
+        # )
+        self.cls_classifier = ClassPredictor(self.encoder.out_size, self.encoder.out_channels, 2)
+        # 
         self.line_predictor = LinePredictor(self.encoder.out_size, pt_size=pt_size, in_channels=self.encoder.out_channels)
 
     def forward(self, x, target=None):
@@ -225,15 +268,16 @@ class ComposeNet(nn.Module):
                 contours.append(cnt)
             # contours = torch.stack(contours, dim=0)
         # 
-        cls_x = self.cls_classifier(x)
-        # 
         x = self.add_coord(x)
         x = self.encoder(x)
-        x, x_freq = self.line_predictor(x, contours, cls_x.detach())
+        # 
+        x_cls = self.cls_classifier(x)
+        # 
+        x, x_freq = self.line_predictor(x, contours, x_cls.detach())
         x = x.split(size)
         x_freq = x_freq.split(size)
         return {
-            "classes": cls_x, 
+            "classes": x_cls, 
             "contours": contours, 
             "target_pts": x, 
             "target_frequency": x_freq, 
