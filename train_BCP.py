@@ -57,14 +57,11 @@ def train(args, epoch, iterations, net, optim, train_loader):
         
         contour_pred_frequency = torch.cat(preds["target_frequency"], dim=0)
         contour_target_frequency = torch.cat([t["points"][:, 5] for t in annotation], dim=0)
-        contour_target_frequency_key = contour_target_frequency > 0.9
+        # contour_target_frequency_key = contour_target_frequency > 0.9
         loss_frequency = F.l1_loss(
             contour_pred_frequency, 
             contour_target_frequency
-        ) + F.l1_loss(
-            contour_pred_frequency[contour_target_frequency_key], 
-            contour_target_frequency[contour_target_frequency_key]
-        ) * 5
+        )
 
         contour_target_gt = torch.cat([t["points"][:, 2:4] for t in annotation], dim=0) * VALUE_WEIGHT
         loss_total_regress = F.l1_loss(
@@ -87,7 +84,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
                 loss_key_regress.append(torch.tensor(0.))
         loss_key_regress = torch.mean(torch.stack(loss_key_regress, dim=0))
 
-        losses = loss_class + loss_frequency * 2 + loss_total_regress * 2 + loss_key_regress * 10
+        losses = loss_class + loss_frequency * 2 + loss_total_regress * 5 + loss_key_regress * 10
 
         optim.zero_grad()
         losses.backward()
@@ -191,12 +188,7 @@ if __name__ == "__main__":
         pin_memory=True)
     
     net = ComposeNet(args.img_size, pt_size=args.max_points)
-    # initialize_model(net.encoder)
-    initialize_model(net.encoder.conv_first)
-    # initialize_model(net.encoder.backbone_0)
-    initialize_model(net.encoder.backbone_1)
-    initialize_model(net.encoder.conv_last)
-    initialize_model(net.line_predictor)
+    initialize_model(net)
 
     net.cuda(args.gpu)
 
