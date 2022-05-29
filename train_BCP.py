@@ -206,10 +206,10 @@ if __name__ == "__main__":
     net.cuda(args.gpu)
 
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
-    step_size = 2
-    # step_size = args.epochs // 4
-    step_size = 1 if step_size == 0 else step_size
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size, gamma=0.5)
+    # step_size = 2
+    # # step_size = args.epochs // 4
+    # step_size = 1 if step_size == 0 else step_size
+    # scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size, gamma=0.5)
 
     for epoch in range(args.epochs):
         train(args, epoch, args.iterations, net, optim, dloader)
@@ -221,7 +221,7 @@ if __name__ == "__main__":
             }, 
             os.path.join(args.model_output, f"{epoch}.ckpt")
         )
-        scheduler.step()
+        # scheduler.step()
 
     # for i, (imgs, bmasks, labels, annotations) in enumerate(dloader):
     #     b, c, h, w = imgs.shape
