@@ -98,35 +98,35 @@ class LinePredictor(nn.Module):
         super().__init__()
         self.max_point = pt_size
         
-        # # 
-        # self.frequency_encode_img = []
-        # level = int(log2(image_size)) - 1
-        # tmp_channel = in_channels
-        # tmp_out_channel = min(pt_size, tmp_channel * 2)
-        # for _ in range(level):
-        #     self.frequency_encode_img.append(Conv2d(tmp_channel, tmp_out_channel, 3, stride=2, bn=None, activate="lrelu"))
-        #     tmp_channel = tmp_out_channel
-        #     tmp_out_channel = min(pt_size, tmp_channel * 2)
-        # self.frequency_encode_img.append(Conv2d(tmp_channel, pt_size, 1, stride=1, bn=None, activate="lrelu"))
-        # self.frequency_encode_img.append(nn.AdaptiveAvgPool2d(1))
-        # self.frequency_encode_img = nn.Sequential(*self.frequency_encode_img)
-        # self.frequency_encode_img_sub =  nn.Sequential(
-        #     Linear(pt_size, pt_size, activate=None), 
-        #     Linear(pt_size, pt_size, activate=None)
-        # )
+        # 
+        self.frequency_encode_img = []
+        level = int(log2(image_size)) - 1
+        tmp_channel = in_channels
+        tmp_out_channel = min(pt_size, tmp_channel * 2)
+        for _ in range(level):
+            self.frequency_encode_img.append(Conv2d(tmp_channel, tmp_out_channel, 3, stride=2, bn=None, activate="lrelu"))
+            tmp_channel = tmp_out_channel
+            tmp_out_channel = min(pt_size, tmp_channel * 2)
+        self.frequency_encode_img.append(Conv2d(tmp_channel, pt_size, 1, stride=1, bn=None, activate="lrelu"))
+        self.frequency_encode_img.append(nn.AdaptiveAvgPool2d(1))
+        self.frequency_encode_img = nn.Sequential(*self.frequency_encode_img)
+        self.frequency_encode_img_sub =  nn.Sequential(
+            Linear(pt_size, pt_size, activate=None), 
+            Linear(pt_size, pt_size, activate=None)
+        )
         
         # 
         in_channels = in_channels * (1) # Plus embedding
-        self.batch_attention = nn.Sequential(
+        self.batch_attention_1 = nn.Sequential(
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size)
         )
-        # self.batch_attention_2 = nn.Sequential(
-        #     SelfAttentionBlock(pt_size), 
-        #     SelfAttentionBlock(pt_size), 
-        #     SelfAttentionBlock(pt_size)
-        # )
+        self.batch_attention_2 = nn.Sequential(
+            SelfAttentionBlock(pt_size), 
+            SelfAttentionBlock(pt_size), 
+            SelfAttentionBlock(pt_size)
+        )
 
         self.frequency_head = nn.Sequential(
             Linear(in_channels, in_channels, activate='lrelu'), 
@@ -173,17 +173,17 @@ class LinePredictor(nn.Module):
         b, c, h, w = x.shape
         # Sample points on feature map. (batch, pt, in_channel(256)).
         x_pt_feature = self.process(x, contours) 
-        # # (batch, pt)
-        # x_freq_img = self.frequency_encode_img(x)
-        # x_freq_img = x_freq_img.reshape(x_freq_img.size(0), -1)
-        # x_freq_img = self.frequency_encode_img_sub(x_freq_img).tanh()
+        # (batch, pt)
+        x_freq_img = self.frequency_encode_img(x)
+        x_freq_img = x_freq_img.reshape(x_freq_img.size(0), -1)
+        x_freq_img = self.frequency_encode_img_sub(x_freq_img)
 
         # Do predict.
         x_pt_feature = x_pt_feature.reshape(b, self.max_point, c, 1)
         # 
         # x = x_pt_feature * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1)
         # x = x_pt_feature
-        x = self.batch_attention(x_pt_feature)
+        x = self.batch_attention_1(x_pt_feature) + self.batch_attention_2(x_pt_feature * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1))
         # x = x + x * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1)
         # print(x.shape)
         x = x.reshape(b, self.max_point, -1)
