@@ -111,22 +111,24 @@ class LinePredictor(nn.Module):
         self.frequency_encode_img.append(nn.AdaptiveAvgPool2d(1))
         self.frequency_encode_img = nn.Sequential(*self.frequency_encode_img)
         self.frequency_encode_img_sub =  nn.Sequential(
-            Linear(pt_size, pt_size, activate=None), 
-            Linear(pt_size, pt_size, activate=None)
+            Linear(pt_size, pt_size // 2, activate='lrelu'), 
+            Linear(pt_size // 2, pt_size, activate='lrelu'), 
+            Linear(pt_size, pt_size, activate='lrelu')
         )
         
         # 
-        in_channels = in_channels * (1) # Plus embedding
-        self.batch_attention_1 = nn.Sequential(
+        in_channels = in_channels * (1) + 2 + 3 # Plus embedding
+        self.batch_attention = nn.Sequential(
             SelfAttentionBlock(pt_size), 
-            SelfAttentionBlock(pt_size), 
-            SelfAttentionBlock(pt_size)
-        )
-        self.batch_attention_2 = nn.Sequential(
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size)
         )
+        # self.batch_attention_2 = nn.Sequential(
+        #     SelfAttentionBlock(pt_size), 
+        #     SelfAttentionBlock(pt_size), 
+        #     SelfAttentionBlock(pt_size)
+        # )
 
         self.frequency_head = nn.Sequential(
             Linear(in_channels, in_channels, activate='lrelu'), 
@@ -148,14 +150,17 @@ class LinePredictor(nn.Module):
             Linear(in_channels, 2, activate=None)
         )
 
-    def process(self, x: torch.Tensor, contours: torch.Tensor):
+    def process(self, x: torch.Tensor, contours):
         dtype = x.dtype
         device = x.device
         b, c, h, w = x.shape
         resamples = []
+        stacked_cnts = []
         for i, cnt in enumerate(contours):
             normalized_pts = cnt.to(device)
+            stacked_cnt = torch.zeros(self.max_point, 2, dtype=dtype, device=device)
             if normalized_pts.numel() != 0:
+                stacked_cnt[:normalized_pts.size(0)] = normalized_pts
                 normalized_pts = normalized_pts.unsqueeze(0).unsqueeze(0)
                 resample = grid_sample(x[i][None], normalized_pts, mode='bilinear')
                 resample = resample.squeeze()
@@ -166,13 +171,15 @@ class LinePredictor(nn.Module):
             else:
                 resample = torch.zeros(self.max_point, c, dtype=dtype, device=device)
             resamples.append(resample)
+            stacked_cnts.append(stacked_cnt)
         resamples = torch.stack(resamples, dim=0)
-        return resamples
+        stacked_cnts = torch.stack(stacked_cnts, dim=0)
+        return resamples, stacked_cnts
     
-    def forward(self, x: torch.Tensor, contours: torch.Tensor, x_cls: torch.Tensor):
+    def forward(self, x: torch.Tensor, contours, x_cls: torch.Tensor):
         b, c, h, w = x.shape
         # Sample points on feature map. (batch, pt, in_channel(256)).
-        x_pt_feature = self.process(x, contours) 
+        x_pt_feature, x_pt_cnts = self.process(x, contours) 
         # (batch, pt)
         x_freq_img = self.frequency_encode_img(x)
         x_freq_img = x_freq_img.reshape(x_freq_img.size(0), -1)
@@ -183,7 +190,15 @@ class LinePredictor(nn.Module):
         # 
         # x = x_pt_feature * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1)
         # x = x_pt_feature
-        x = self.batch_attention_1(x_pt_feature) + self.batch_attention_2(x_pt_feature * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1))
+        x = torch.cat([
+            x_pt_feature, 
+            x_pt_cnts.reshape(b, self.max_point, -1, 1), 
+            x_freq_img.reshape(b, self.max_point, 1, 1), 
+            x_cls.reshape(b, 1, -1, 1).repeat(1, self.max_point, 1, 1)
+            ], dim=2
+        )
+        #  + self.batch_attention_2(x_pt_feature * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1))
+        x = self.batch_attention(x)
         # x = x + x * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1)
         # print(x.shape)
         x = x.reshape(b, self.max_point, -1)

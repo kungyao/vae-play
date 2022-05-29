@@ -97,7 +97,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
         #         loss_key_regress.append(torch.tensor(0.))
         # loss_key_regress = torch.mean(torch.stack(loss_key_regress, dim=0))
 
-        losses = loss_class + loss_frequency * 4 + loss_total_regress * 2 + loss_key_regress * 3
+        losses = loss_class * 4 + loss_frequency * 4 + loss_total_regress * 2 + loss_key_regress * 3
 
         optim.zero_grad()
         losses.backward()
