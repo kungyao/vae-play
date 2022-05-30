@@ -16,55 +16,86 @@ from tools.utils import find_contour, resample_points
 
 VALUE_WEIGHT = 10
 
+class TMPBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, if_down, bn=None):
+        super().__init__()
+        stride1 = 2 if if_down else 1
+        self.convs = nn.Sequential(
+            Conv2d(in_channels, out_channels, 3, stride=stride1, bn=bn, activate="lrelu"), 
+            Conv2d(out_channels, out_channels, 1, stride=1, bn=None, activate="lrelu"), 
+            Conv2d(out_channels, out_channels, 3, stride=1, bn=bn, activate="lrelu"), 
+        )
+        # self.skip = Conv2d(in_channels, out_channels, 3, stride=stride1, bn=None, activate="lrelu")
+        # self.cat = Conv2d(out_channels * 2, out_channels, 3, stride=1, bn=None, activate="lrelu")
+
+    def forward(self, x):
+        x = self.convs(x)
+        # x_skip = self.skip(x)
+        # x = torch.cat([x_dir, x_skip], dim=1)
+        # x = self.cat(x)
+        return x
+
 class ContentEndoer(nn.Module):
     def __init__(self, in_channels):
         super().__init__()
-        # self.convs = nn.Sequential(
-        #     Conv2d(in_channels, 64, 3, stride=2, bn=None, activate="lrelu"), 
-        #     Conv2d(64, 128, 3, stride=2, bn=None, activate="lrelu"), 
-        #     Conv2d(128, 256, 3, stride=2, bn=None, activate="lrelu"), 
-        #     Conv2d(256, 512, 3, stride=2, bn=None, activate="lrelu"), 
-        #     Conv2d(512, 1024, 3, stride=2, bn=None, activate="lrelu"), 
-        #     Conv2d(1024, 2048, 3, stride=1, bn=None, activate="lrelu"), 
-        #     Conv2d(2048, 2048, 3, stride=1, bn=None, activate="lrelu"), 
+        self.convs1 = nn.Sequential(
+            TMPBlock(in_channels, 64, True, bn="batch"), 
+            TMPBlock(64, 64, True, bn="batch"), 
+            TMPBlock(64, 64, False, bn="batch"), 
+            TMPBlock(64, 64, False, bn="batch"), 
+            TMPBlock(64, 64, False, bn="batch"), 
+            TMPBlock(64, 64, False, bn="batch"), 
+            TMPBlock(64, 64, False, bn="batch"), 
+        )
+        self.convs2 = nn.Sequential(
+            TMPBlock(in_channels, 64, True, bn="instance"), 
+            TMPBlock(64, 64, True, bn="instance"), 
+            TMPBlock(64, 64, False, bn="instance"), 
+            TMPBlock(64, 64, False, bn="instance"), 
+            TMPBlock(64, 64, False, bn="instance"), 
+            TMPBlock(64, 64, False, bn="instance"), 
+            TMPBlock(64, 64, False, bn="instance"), 
+        )
+        
+        # self.conv_first = Conv2d(in_channels, 64, 3, stride=1, bn=None, activate="lrelu")
+        # # res34 = resnet34(pretrained=True)
+        # res34 = resnet34()
+        # self.backbone_0 = nn.Sequential(
+        #     deepcopy(res34.layer1), 
+        #     # initialize_model(Conv2d(64, 64, 3, stride=1, bn=None, activate="lrelu")), 
+        #     deepcopy(res34.layer2), 
+        #     # initialize_model(Conv2d(128, 128, 3, stride=1, bn=None, activate="lrelu")), 
+        #     deepcopy(res34.layer3), 
+        #     # initialize_model(Conv2d(256, 256, 3, stride=1, bn=None, activate="lrelu")), 
+        #     deepcopy(res34.layer4), 
         # )
-        self.conv_first = Conv2d(in_channels, 64, 3, stride=2, bn=None, activate="lrelu")
+        # self.backbone_1 = nn.Sequential(
+        #     # deepcopy(res34.layer1), 
+        #     Conv2d(64, 128, 3, stride=2, bn=None, activate="lrelu"), 
+        #     # deepcopy(res34.layer2), 
+        #     Conv2d(128, 256, 3, stride=2, bn=None, activate="lrelu"), 
+        #     # deepcopy(res34.layer3), 
+        #     Conv2d(256, 512, 3, stride=2, bn=None, activate="lrelu"), 
+        #     # deepcopy(res34.layer4), 
+        #     Conv2d(512, 512, 3, stride=1, bn=None, activate="lrelu"), 
+        # )
+        # self.conv_last = Conv2d(512 * 2, 512 * 2, 1, stride=1, bn=None, activate=None)
 
-        # res34 = resnet34(pretrained=True)
-        res34 = resnet34()
-        self.backbone_0 = nn.Sequential(
-            deepcopy(res34.layer1), 
-            # initialize_model(Conv2d(64, 64, 3, stride=1, bn=None, activate="lrelu")), 
-            deepcopy(res34.layer2), 
-            # initialize_model(Conv2d(128, 128, 3, stride=1, bn=None, activate="lrelu")), 
-            deepcopy(res34.layer3), 
-            # initialize_model(Conv2d(256, 256, 3, stride=1, bn=None, activate="lrelu")), 
-            deepcopy(res34.layer4), 
-        )
-        self.backbone_1 = nn.Sequential(
-            # deepcopy(res34.layer1), 
-            Conv2d(64, 128, 3, stride=2, bn=None, activate="lrelu"), 
-            # deepcopy(res34.layer2), 
-            Conv2d(128, 256, 3, stride=2, bn=None, activate="lrelu"), 
-            # deepcopy(res34.layer3), 
-            Conv2d(256, 512, 3, stride=2, bn=None, activate="lrelu"), 
-            # deepcopy(res34.layer4), 
-            Conv2d(512, 512, 3, stride=1, bn=None, activate="lrelu"), 
-        )
-
-        self.conv_last = Conv2d(512 * 2, 512 * 2, 1, stride=1, bn=None, activate=None)
-        self.out_size = 16
-        self.out_channels = 512 * 2
+        self.out_size = 128
+        self.out_channels = 128
 
     def forward(self, x: torch.Tensor):
-        x = self.conv_first(x)
-        x_0 = self.backbone_0(x)
-        x_1 = self.backbone_1(x)
-        b, c, h, w = x_0.shape
-        # weight_solid = cls_x[:, 0].reshape(b, 1, 1, 1).repeat(1, c, h, w) * weight_solid
-        # weight_emit = cls_x[:, 1].reshape(b, 1, 1, 1).repeat(1, c, h, w) * weight_emit
-        x = torch.cat([x_0, x_1], dim=1)
-        x = self.conv_last(x)
+        x_1 = self.convs1(x)
+        x_2 = self.convs2(x)
+        x = torch.cat([x_1, x_2], dim=1)
+        # x = self.conv_first(x)
+        # x_0 = self.backbone_0(x)
+        # x_1 = self.backbone_1(x)
+        # b, c, h, w = x_0.shape
+        # # weight_solid = cls_x[:, 0].reshape(b, 1, 1, 1).repeat(1, c, h, w) * weight_solid
+        # # weight_emit = cls_x[:, 1].reshape(b, 1, 1, 1).repeat(1, c, h, w) * weight_emit
+        # x = torch.cat([x_0, x_1], dim=1)
+        # x = self.conv_last(x)
         return x
 
 class ValueEncoder(nn.Module):
