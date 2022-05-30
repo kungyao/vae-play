@@ -30,7 +30,8 @@ def train(args, epoch, iterations, net, optim, train_loader):
     count = 0
     avg_loss = {
         "loss_class": 0, 
-        "loss_frequency": 0, 
+        "loss_frequency_one": 0, 
+        "loss_frequency_zero": 0, 
         "loss_total_regress": 0, 
         "loss_key_regress": 0, 
     }
@@ -57,15 +58,23 @@ def train(args, epoch, iterations, net, optim, train_loader):
         
         contour_pred_frequency = torch.cat(preds["target_frequency"], dim=0)
         contour_target_frequency = torch.cat([t["points"][:, 4] for t in annotation], dim=0)
+        contour_target_key_frequency = torch.cat([t["points"][:, 5] for t in annotation], dim=0)
         # contour_target_frequency = (contour_target_frequency > 0.1).to(dtype=contour_pred_frequency.dtype)
         contour_target_frequency = contour_target_frequency > 0.1
-        loss_frequency = F.l1_loss(
-            contour_pred_frequency[contour_target_frequency], 
-            torch.ones_like(contour_target_frequency[contour_target_frequency], dtype=contour_pred_frequency.dtype)
+        contour_target_key_frequency = contour_target_key_frequency > 0.5
+        # loss_frequency_one = F.l1_loss(
+        #     contour_pred_frequency[contour_target_frequency], 
+        #     torch.ones_like(contour_target_frequency[contour_target_frequency], dtype=contour_pred_frequency.dtype)
+        # )
+        loss_frequency_one = F.l1_loss(
+            contour_pred_frequency[contour_target_key_frequency], 
+            torch.ones_like(contour_target_frequency[contour_target_key_frequency], dtype=contour_pred_frequency.dtype)
         )
+
+        loss_frequency_zero = torch.tensor(0.)
         contour_target_frequency = ~contour_target_frequency
         if torch.sum(contour_target_frequency) != 0:
-            loss_frequency = loss_frequency + F.l1_loss(
+            loss_frequency_zero = F.l1_loss(
                 contour_pred_frequency[contour_target_frequency], 
                 torch.zeros_like(contour_target_frequency[contour_target_frequency], dtype=contour_pred_frequency.dtype)
             )
@@ -98,8 +107,9 @@ def train(args, epoch, iterations, net, optim, train_loader):
         # loss_key_regress = torch.mean(torch.stack(loss_key_regress, dim=0))
 
         # losses = loss_class * 1 + loss_frequency * 4 + loss_total_regress * 4 + loss_key_regress * 5
-        losses = loss_class * 1 + loss_frequency * 4 + loss_total_regress * 4 + loss_key_regress * 10
         # losses = loss_class * 1 + loss_frequency * 2 + loss_total_regress * 4 + loss_key_regress * 5 (b)
+        # losses = loss_class * 1 + loss_frequency * 4 + loss_total_regress * 4 + loss_key_regress * 10 (s)
+        losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 4 + loss_total_regress * 4 + loss_key_regress * 5
 
         optim.zero_grad()
         losses.backward()
@@ -108,7 +118,8 @@ def train(args, epoch, iterations, net, optim, train_loader):
         with torch.no_grad():
             next_count = count + imgs.size(0)
             avg_loss["loss_class"] = (avg_loss["loss_class"] * count + loss_class.item()) / next_count
-            avg_loss["loss_frequency"] = (avg_loss["loss_frequency"] * count + loss_frequency.item()) / next_count
+            avg_loss["loss_frequency_one"] = (avg_loss["loss_frequency_one"] * count + loss_frequency_one.item()) / next_count
+            avg_loss["loss_frequency_zero"] = (avg_loss["loss_frequency_zero"] * count + loss_frequency_zero.item()) / next_count
             avg_loss["loss_total_regress"] = (avg_loss["loss_total_regress"] * count + loss_total_regress.item()) / next_count
             avg_loss["loss_key_regress"] = (avg_loss["loss_key_regress"] * count + loss_key_regress.item()) / next_count
             count = next_count
