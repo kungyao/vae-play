@@ -217,6 +217,7 @@ class LinePredictor(nn.Module):
         x_freq_img = self.frequency_encode_img_sub(x_freq_img)
 
         # Do predict.
+        x_cls = x_cls.softmax(dim=-1)
         x_pt_feature = x_pt_feature.reshape(b, self.max_point, c, 1)
         # 
         # x = x_pt_feature * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1)
@@ -230,6 +231,11 @@ class LinePredictor(nn.Module):
         )
         #  + self.batch_attention_2(x_pt_feature * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1))
         x = self.batch_attention(x)
+        # x = torch.cat([
+        #     x, 
+        #     x_cls.reshape(b, 1, -1, 1).repeat(1, self.max_point, 1, 1)
+        #     ], dim=2
+        # )
         # x = x + x * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1)
         # print(x.shape)
         x = x.reshape(b, self.max_point, -1)
@@ -311,15 +317,17 @@ class ComposeNet(nn.Module):
                 contours.append(t["points"][:, :2])
             # contours = torch.stack(contours, dim=0)
         else:
+            device = x.device
             b, c, h, w = x.shape
             size = []
             contours = []
             for i in range(b):
-                cnt = find_contour(b[i])
+                cnt = find_contour(np.asarray(x[i][1].cpu()))
                 cnt = resample_points(cnt, self.max_point)
                 cnt = (cnt / h - 0.5) / 0.5
+                cnt = torch.FloatTensor(cnt)
                 size.append(len(cnt))
-                contours.append(cnt)
+                contours.append(cnt.to(device=device))
             # contours = torch.stack(contours, dim=0)
         # 
         x = self.add_coord(x)

@@ -58,18 +58,18 @@ def train(args, epoch, iterations, net, optim, train_loader):
         
         contour_pred_frequency = torch.cat(preds["target_frequency"], dim=0)
         contour_target_frequency = torch.cat([t["points"][:, 4] for t in annotation], dim=0)
-        contour_target_key_frequency = torch.cat([t["points"][:, 5] for t in annotation], dim=0)
+        # contour_target_key_frequency = torch.cat([t["points"][:, 5] for t in annotation], dim=0)
         # contour_target_frequency = (contour_target_frequency > 0.1).to(dtype=contour_pred_frequency.dtype)
         contour_target_frequency = contour_target_frequency > 0.1
-        contour_target_key_frequency = contour_target_key_frequency > 0.5
-        # loss_frequency_one = F.l1_loss(
-        #     contour_pred_frequency[contour_target_frequency], 
-        #     torch.ones_like(contour_target_frequency[contour_target_frequency], dtype=contour_pred_frequency.dtype)
-        # )
+        # contour_target_key_frequency = contour_target_key_frequency > 0.5
         loss_frequency_one = F.l1_loss(
-            contour_pred_frequency[contour_target_key_frequency], 
-            torch.ones_like(contour_target_frequency[contour_target_key_frequency], dtype=contour_pred_frequency.dtype)
+            contour_pred_frequency[contour_target_frequency], 
+            torch.ones_like(contour_target_frequency[contour_target_frequency], dtype=contour_pred_frequency.dtype)
         )
+        # loss_frequency_one = F.l1_loss(
+        #     contour_pred_frequency[contour_target_key_frequency], 
+        #     torch.ones_like(contour_target_frequency[contour_target_key_frequency], dtype=contour_pred_frequency.dtype)
+        # )
 
         loss_frequency_zero = torch.tensor(0.)
         contour_target_frequency = ~contour_target_frequency
@@ -109,7 +109,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
         # losses = loss_class * 1 + loss_frequency * 4 + loss_total_regress * 4 + loss_key_regress * 5
         # losses = loss_class * 1 + loss_frequency * 2 + loss_total_regress * 4 + loss_key_regress * 5 (b)
         # losses = loss_class * 1 + loss_frequency * 4 + loss_total_regress * 4 + loss_key_regress * 10 (s)
-        losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 4 + loss_total_regress * 4 + loss_key_regress * 5
+        losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 4 + loss_total_regress * 10 + loss_key_regress * 5
 
         optim.zero_grad()
         losses.backward()
