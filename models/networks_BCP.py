@@ -39,22 +39,22 @@ class ContentEndoer(nn.Module):
     def __init__(self, in_channels):
         super().__init__()
         self.convs1 = nn.Sequential(
-            TMPBlock(in_channels, 64, True, bn="batch"), 
-            TMPBlock(64, 64, True, bn="batch"), 
-            TMPBlock(64, 64, False, bn="batch"), 
-            TMPBlock(64, 64, False, bn="batch"), 
-            TMPBlock(64, 64, False, bn="batch"), 
-            TMPBlock(64, 64, False, bn="batch"), 
-            TMPBlock(64, 64, False, bn="batch"), 
+            TMPBlock(in_channels, 32, True, bn="instance"), 
+            TMPBlock(32, 32, True, bn="instance"), 
+            TMPBlock(32, 32, False, bn="instance"), 
+            TMPBlock(32, 32, False, bn="batch"), 
+            TMPBlock(32, 32, False, bn="batch"), 
+            TMPBlock(32, 32, False, bn="batch"), 
+            TMPBlock(32, 32, False, bn="batch"), 
         )
         self.convs2 = nn.Sequential(
-            TMPBlock(in_channels, 64, True, bn="instance"), 
-            TMPBlock(64, 64, True, bn="instance"), 
-            TMPBlock(64, 64, False, bn="instance"), 
-            TMPBlock(64, 64, False, bn="instance"), 
-            TMPBlock(64, 64, False, bn="instance"), 
-            TMPBlock(64, 64, False, bn="instance"), 
-            TMPBlock(64, 64, False, bn="instance"), 
+            TMPBlock(in_channels, 96, True, bn="instance"), 
+            TMPBlock(96, 96, True, bn="instance"), 
+            TMPBlock(96, 96, False, bn="instance"), 
+            TMPBlock(96, 96, False, bn="instance"), 
+            TMPBlock(96, 96, False, bn="instance"), 
+            TMPBlock(96, 96, False, bn="instance"), 
+            TMPBlock(96, 96, False, bn="instance"), 
         )
         
         # self.conv_first = Conv2d(in_channels, 64, 3, stride=1, bn=None, activate="lrelu")
