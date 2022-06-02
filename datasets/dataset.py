@@ -553,3 +553,43 @@ class BCPDataset(Dataset):
 
         return img, bmask, self.labels[idx], annotation
 
+class BCPDatasetTEST(Dataset):
+    def __init__(self, data_path, img_size) -> None:
+        super().__init__()
+        self.imgs = []
+        self.masks = []
+        self.transform = BTransform((img_size, img_size), False)
+
+        for cls_name in os.listdir(data_path):
+            if cls_name not in ["2", "3"]:
+                continue
+            cls_folder = os.path.join(data_path, cls_name)
+            for patch in os.listdir(cls_folder):
+                if "layer" in patch or "mask" in patch or "edge" in patch or "bubble" in patch:
+                    continue
+                name, ext = patch.split(".")[:2]
+                self.imgs.append(os.path.join(cls_folder, f"{name}_mask2.{ext}"))
+                self.masks.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
+    
+    def __len__(self):
+        return len(self.imgs)
+
+    def __getitem__(self, idx):
+        # 
+        img = Image.open(self.imgs[idx], "r").convert("L")
+        # 
+        mask = Image.open(self.masks[idx], "r").convert("RGB")
+        mask = np.array(mask)
+        bg = np.where((mask[:,:,0]==255) & (mask[:,:,1]==255) & (mask[:,:,2]==255))
+        mask[bg] = (0, 0, 0)
+        bmask = mask[:, :, 0]
+        emask = mask[:, :, 1]
+        #
+        img = TF.to_tensor(img)
+        bmask = TF.to_tensor(bmask)
+        emask = TF.to_tensor(emask)
+        # 
+        img = torch.cat([img, bmask, emask], dim=0)
+        bmask = bmask.repeat(3, 1, 1)
+        return img, bmask
+
