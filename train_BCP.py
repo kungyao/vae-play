@@ -109,7 +109,9 @@ def train(args, epoch, iterations, net, optim, train_loader):
         # losses = loss_class * 1 + loss_frequency * 4 + loss_total_regress * 4 + loss_key_regress * 5
         # losses = loss_class * 1 + loss_frequency * 2 + loss_total_regress * 4 + loss_key_regress * 5 (b)
         # losses = loss_class * 1 + loss_frequency * 4 + loss_total_regress * 4 + loss_key_regress * 10 (s)
-        losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 2 + loss_total_regress * 10 + loss_key_regress * 5
+        # losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 2 + loss_total_regress * 10 + loss_key_regress * 5
+        # losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 10 + loss_total_regress * 10 + loss_key_regress * 5 (wait for test)
+        losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 1.0 + loss_total_regress * 10 + loss_key_regress * 5
 
         optim.zero_grad()
         losses.backward()
