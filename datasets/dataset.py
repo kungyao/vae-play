@@ -456,12 +456,18 @@ class BPDatasetTEST(Dataset):
         # img = torch.multiply(img, eimg) + (1 - eimg)
         return img, bimg
 
-def random_offset(bbox, img_size):
+def random_offset(bbox, img_size, maximum=100):
     left, upper, right, lower = bbox
+    # 
+    left = min(left, maximum)
+    upper = min(upper, maximum)
+    right = min(img_size - right, maximum)
+    lower = min(img_size - lower, maximum)
+    # 
     left = -left + 1
     upper = -upper + 1
-    right = img_size - right
-    lower = img_size - lower
+    # right = img_size - right
+    # lower = img_size - lower
     offset_x = 0
     offset_y = 0
     if left < right:
@@ -469,6 +475,22 @@ def random_offset(bbox, img_size):
     if upper < lower:
         offset_y = np.random.randint(upper, lower)
     return offset_x, offset_y
+
+def resample_points_with_constraint(contour, max_points: int=256):
+    l = len(contour)
+    if l > max_points:
+        # Select key first
+        fix_select = contour[:, 5] >= 0.9
+        random_select = np.where(~fix_select)[0]
+        # Random select from non-key
+        random_select_size = max_points - np.sum(fix_select)
+        random_select_idx = np.arange(len(random_select))
+        np.random.shuffle(random_select_idx)
+        random_select_idx = random_select_idx[:random_select_size]
+        # Merge two list
+        fix_select[random_select[random_select_idx]] = True
+        return np.array(contour[fix_select])
+    return contour
 
 # Bubble Contour parameter
 class BCPDataset(Dataset):
@@ -494,7 +516,7 @@ class BCPDataset(Dataset):
 
                 with open(os.path.join(anno_path, f"{name}.txt"), 'r') as fp:
                     annotation = json.load(fp)
-                annotation["points"] = np.array(annotation["points"])
+                annotation["points"] = np.array(annotation["points"], dtype=np.float32)
                 self.annotations.append(annotation)
 
     def __len__(self):
@@ -502,11 +524,18 @@ class BCPDataset(Dataset):
 
     def __getitem__(self, idx):
         mask = Image.open(self.masks[idx], "r").convert("L")
-        # 
-        offset_x, offset_y = random_offset(mask.getbbox(), mask.height)
-        scale = 1 / mask.height
-
         layer = Image.open(self.layers[idx], "r").convert("RGB")
+        # 
+        width = mask.width
+        height = mask.height
+        center_x = width * 0.5
+        center_y = height * 0.5
+        random_rotation = np.random.uniform(-30, 30)
+        random_rotation_radian = random_rotation * np.pi / 180
+        offset_x, offset_y = random_offset(mask.getbbox(), height)
+        scale = 1 / height
+
+        # 
         layer = np.array(layer)
         bg = np.where((layer[:,:,0]==255) & (layer[:,:,1]==255) & (layer[:,:,2]==255))
         layer[bg] = (0, 0, 0)
@@ -521,16 +550,42 @@ class BCPDataset(Dataset):
         img = torch.cat([img, bmask, emask], dim=0)
         bmask = bmask.repeat(3, 1, 1)
 
+        # sx, sy, ex, ey, l, key
         annotation = {}
-        points_annotation = torch.FloatTensor(resample_points(self.annotations[idx]["points"], max_points=self.max_points))
+        # points_annotation = torch.FloatTensor(resample_points_with_constraint(self.annotations[idx]["points"], max_points=self.max_points))
+        points_annotation = self.annotations[idx]["points"].copy()
 
         if offset_x != 0 or offset_y != 0:
-            img = TF.affine(img, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0)
-            bmask = TF.affine(bmask, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0)
+            img = TF.affine(img, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
+            bmask = TF.affine(bmask, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
+            # img = TF.affine(img, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
+            # bmask = TF.affine(bmask, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
+
+            # rotate
+            points_annotation[:, 0:3:2] = points_annotation[:, 0:3:2] - center_x
+            points_annotation[:, 1:4:2] = points_annotation[:, 1:4:2] - center_y
+
+            transform_x = points_annotation[:, 0:3:2] * np.cos(random_rotation_radian) - points_annotation[:, 1:4:2] * np.sin(random_rotation_radian)
+            transform_y = points_annotation[:, 0:3:2] * np.sin(random_rotation_radian) + points_annotation[:, 1:4:2] * np.cos(random_rotation_radian)
+
+            transform_x = transform_x + center_x
+            transform_y = transform_y + center_y
+
+            # transform_x[transform_x>=width] = width - 1
+            # transform_x[transform_x<0] = 0
+
+            # transform_y[transform_y>=height] = height - 1
+            # transform_y[transform_y<0] = 0
+
+            points_annotation[:, 0:3:2] = transform_x
+            points_annotation[:, 1:4:2] = transform_y
+
+            # offset
             if offset_x != 0:
                 points_annotation[:, 0:3:2] += offset_x
             if offset_y != 0:
                 points_annotation[:, 1:4:2] += offset_y
+
 
         points_annotation[:, :4] = (points_annotation[:, :4] * scale - 0.5) / 0.5
         # normalize length
@@ -546,10 +601,21 @@ class BCPDataset(Dataset):
             bmask = TF.hflip(bmask)
             points_annotation[:, 0:3:2] *= -1
         
+        select = np.logical_or(
+            np.abs(points_annotation[:, 0]) <= 1, 
+            np.logical_or(
+                np.abs(points_annotation[:, 1]) <= 1, 
+                np.logical_or(
+                    np.abs(points_annotation[:, 2]) <= 1, 
+                    np.abs(points_annotation[:, 3]) <= 1
+                )
+            )
+        )
+        points_annotation = points_annotation[select]
         # Offset
         points_annotation[:, 2:4] = points_annotation[:, 2:4] - points_annotation[:, 0:2]
 
-        annotation["points"] = points_annotation
+        annotation["points"] = torch.FloatTensor(resample_points_with_constraint(points_annotation, max_points=self.max_points))
 
         return img, bmask, self.labels[idx], annotation
 
