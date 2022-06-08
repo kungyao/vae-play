@@ -46,10 +46,12 @@ class ContentEndoer(nn.Module):
             TMPBlock(64, 64, False, bn=None), 
             TMPBlock(64, 64, False, bn=None), 
             TMPBlock(64, 64, False, bn=None), 
+            TMPBlock(64, 64, False, bn=None), 
         )
         self.convs2 = nn.Sequential(
             TMPBlock(in_channels, 64, True, bn="instance"), 
             TMPBlock(64, 64, True, bn="instance"), 
+            TMPBlock(64, 64, False, bn="instance"), 
             TMPBlock(64, 64, False, bn="instance"), 
             TMPBlock(64, 64, False, bn="instance"), 
             TMPBlock(64, 64, False, bn="instance"), 
