@@ -18,9 +18,9 @@ class Conv2d(nn.Module):
         ]
         if bn is not None:
             if bn == "batch":
-                conv.append(nn.BatchNorm2d(out_channel, track_running_stats=False))
+                conv.append(nn.BatchNorm2d(out_channel))
             elif bn == "instance":
-                conv.append(nn.InstanceNorm2d(out_channel, track_running_stats=False))
+                conv.append(nn.InstanceNorm2d(out_channel))
         if activate is not None:
             if activate == 'relu':
                 conv.append(nn.ReLU())

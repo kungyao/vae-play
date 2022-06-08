@@ -137,7 +137,7 @@ class ComposeNet(nn.Module):
         out_channels = min(in_channels * 2, max_channel)
         for _ in range(repeat_num):
             self.down.append(nn.Sequential(
-                Conv2d(in_channels, out_channels, 3, stride=2, bn="instance"), 
+                Conv2d(in_channels, out_channels, 3, stride=2, bn="batch"), 
                 Conv2d(out_channels, out_channels, 3, stride=1, bn="instance")
             ))
             in_channels = out_channels
@@ -240,8 +240,8 @@ class Classifier(nn.Module):
         self.backbone = nn.Sequential(
             Conv2d(64, 128, 3, stride=2, bn="instance", activate="lrelu"), 
             Conv2d(128, 256, 3, stride=2, bn="instance", activate="lrelu"), 
-            Conv2d(256, 512, 3, stride=2, bn="instance", activate="lrelu"),
-            Conv2d(512, 1024, 3, stride=2, bn="instance", activate="lrelu"),
+            Conv2d(256, 512, 3, stride=2, bn="batch", activate="lrelu"),
+            Conv2d(512, 1024, 3, stride=2, bn="batch", activate="lrelu"),
         )
         
         self.embeding_block = ParameterEmbedingNet(EmbedingBlock, in_size, in_type="embed")
