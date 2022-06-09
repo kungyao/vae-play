@@ -61,7 +61,6 @@ def train(args, epoch, iterations, net, optim, train_loader):
         # contour_target_key_frequency = torch.cat([t["points"][:, 5] for t in annotation], dim=0)
         # contour_target_frequency = (contour_target_frequency > 0.1).to(dtype=contour_pred_frequency.dtype)
         contour_target_frequency = contour_target_frequency > 0.1
-        sum_of_trig = torch.sum(contour_target_frequency)
         # contour_target_key_frequency = contour_target_key_frequency > 0.5
         loss_frequency_one = F.l1_loss(
             contour_pred_frequency[contour_target_frequency], 
@@ -75,14 +74,10 @@ def train(args, epoch, iterations, net, optim, train_loader):
         loss_frequency_zero = torch.tensor(0.)
         contour_target_frequency = ~contour_target_frequency
         if torch.sum(contour_target_frequency) != 0:
-            sum_of_non_trig = torch.sum(contour_target_frequency)
             loss_frequency_zero = F.l1_loss(
                 contour_pred_frequency[contour_target_frequency], 
                 torch.zeros_like(contour_target_frequency[contour_target_frequency], dtype=contour_pred_frequency.dtype)
             )
-            ## 
-            if sum_of_trig != 0:
-                loss_frequency_zero = loss_frequency_zero * sum_of_non_trig / sum_of_trig
 
         contour_target_pred = torch.cat(preds["target_pts"], dim=0)
         contour_target_gt = torch.cat([t["points"][:, 2:4] for t in annotation], dim=0) * VALUE_WEIGHT
