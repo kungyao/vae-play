@@ -17,6 +17,7 @@ from tools.utils import encode_circle_param, generate_circle_param, generate_cir
 from tools.utils import find_contour, resample_points
 
 CHANNEL_SIZE = 1
+AUG_ROTATE = False
 
 class CDataset(Dataset):
     def __init__(self, n: int, min_radius:int =10, data_size:int =4096, ifGen=False, ifWrite=False) -> None:
@@ -528,10 +529,12 @@ class BCPDataset(Dataset):
         # 
         width = mask.width
         height = mask.height
-        center_x = width * 0.5
-        center_y = height * 0.5
-        random_rotation = np.random.uniform(-15, 15)
-        random_rotation_radian = random_rotation * np.pi / 180
+        random_rotation = 0.0
+        if AUG_ROTATE:
+            center_x = width * 0.5
+            center_y = height * 0.5
+            random_rotation = np.random.uniform(-15, 15)
+            random_rotation_radian = random_rotation * np.pi / 180
         offset_x, offset_y = random_offset(mask.getbbox(), height)
         scale = 1 / height
 
@@ -561,24 +564,25 @@ class BCPDataset(Dataset):
             # img = TF.affine(img, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
             # bmask = TF.affine(bmask, angle=0.0, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
 
-            # rotate
-            points_annotation[:, 0:3:2] = points_annotation[:, 0:3:2] - center_x
-            points_annotation[:, 1:4:2] = points_annotation[:, 1:4:2] - center_y
+            if AUG_ROTATE:
+                # rotate
+                points_annotation[:, 0:3:2] = points_annotation[:, 0:3:2] - center_x
+                points_annotation[:, 1:4:2] = points_annotation[:, 1:4:2] - center_y
 
-            transform_x = points_annotation[:, 0:3:2] * np.cos(random_rotation_radian) - points_annotation[:, 1:4:2] * np.sin(random_rotation_radian)
-            transform_y = points_annotation[:, 0:3:2] * np.sin(random_rotation_radian) + points_annotation[:, 1:4:2] * np.cos(random_rotation_radian)
+                transform_x = points_annotation[:, 0:3:2] * np.cos(random_rotation_radian) - points_annotation[:, 1:4:2] * np.sin(random_rotation_radian)
+                transform_y = points_annotation[:, 0:3:2] * np.sin(random_rotation_radian) + points_annotation[:, 1:4:2] * np.cos(random_rotation_radian)
 
-            transform_x = transform_x + center_x
-            transform_y = transform_y + center_y
+                transform_x = transform_x + center_x
+                transform_y = transform_y + center_y
 
-            # transform_x[transform_x>=width] = width - 1
-            # transform_x[transform_x<0] = 0
+                # transform_x[transform_x>=width] = width - 1
+                # transform_x[transform_x<0] = 0
 
-            # transform_y[transform_y>=height] = height - 1
-            # transform_y[transform_y<0] = 0
+                # transform_y[transform_y>=height] = height - 1
+                # transform_y[transform_y<0] = 0
 
-            points_annotation[:, 0:3:2] = transform_x
-            points_annotation[:, 1:4:2] = transform_y
+                points_annotation[:, 0:3:2] = transform_x
+                points_annotation[:, 1:4:2] = transform_y
 
             # offset
             if offset_x != 0:
@@ -601,17 +605,18 @@ class BCPDataset(Dataset):
             bmask = TF.hflip(bmask)
             points_annotation[:, 0:3:2] *= -1
         
-        select = np.logical_or(
-            np.abs(points_annotation[:, 0]) <= 1, 
-            np.logical_or(
-                np.abs(points_annotation[:, 1]) <= 1, 
+        if AUG_ROTATE:
+            select = np.logical_or(
+                np.abs(points_annotation[:, 0]) <= 1, 
                 np.logical_or(
-                    np.abs(points_annotation[:, 2]) <= 1, 
-                    np.abs(points_annotation[:, 3]) <= 1
+                    np.abs(points_annotation[:, 1]) <= 1, 
+                    np.logical_or(
+                        np.abs(points_annotation[:, 2]) <= 1, 
+                        np.abs(points_annotation[:, 3]) <= 1
+                    )
                 )
             )
-        )
-        points_annotation = points_annotation[select]
+            points_annotation = points_annotation[select]
         # Offset
         points_annotation[:, 2:4] = points_annotation[:, 2:4] - points_annotation[:, 0:2]
 
@@ -636,7 +641,16 @@ class BCPDatasetTEST(Dataset):
                 name, ext = patch.split(".")[:2]
                 self.imgs.append(os.path.join(cls_folder, f"{name}_mask2.{ext}"))
                 self.masks.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
-    
+
+        cls_folder = "D:/Manga/bubble-cnt-data/3"
+        for cls_name in os.listdir(cls_folder):
+            layer_path = os.path.join(cls_folder, "layers")
+            mask_path = os.path.join(cls_folder, "masks")
+
+            for name in os.listdir(layer_path):
+                self.imgs.append(os.path.join(mask_path, f"{name}"))
+                self.masks.append(os.path.join(layer_path, f"{name}"))
+
     def __len__(self):
         return len(self.imgs)
 
