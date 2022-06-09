@@ -17,7 +17,7 @@ from tools.utils import encode_circle_param, generate_circle_param, generate_cir
 from tools.utils import find_contour, resample_points
 
 CHANNEL_SIZE = 1
-AUG_ROTATE = False
+AUG_ROTATE = True
 
 class CDataset(Dataset):
     def __init__(self, n: int, min_radius:int =10, data_size:int =4096, ifGen=False, ifWrite=False) -> None:

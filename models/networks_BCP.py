@@ -103,22 +103,23 @@ class LinePredictor(nn.Module):
         self.frequency_encode_img = []
         level = int(log2(image_size)) - 1
         tmp_channel = in_channels
-        tmp_out_channel = min(pt_size, tmp_channel * 2)
+        tmp_out_channel = min(in_channels, tmp_channel * 2)
         for _ in range(level):
-            self.frequency_encode_img.append(Conv2d(tmp_channel, tmp_out_channel, 3, stride=2, bn=None, activate="lrelu"))
+            self.frequency_encode_img.append(Conv2d(tmp_channel, tmp_out_channel, 3, stride=2, bn="instance", activate="lrelu"))
             tmp_channel = tmp_out_channel
-            tmp_out_channel = min(pt_size, tmp_channel * 2)
-        self.frequency_encode_img.append(Conv2d(tmp_channel, pt_size, 1, stride=1, bn=None, activate="lrelu"))
+            tmp_out_channel = min(in_channels, tmp_channel * 2)
+        tmp_out_channel = in_channels
+        self.frequency_encode_img.append(Conv2d(tmp_channel, tmp_out_channel, 1, stride=1, bn=None, activate="lrelu"))
         self.frequency_encode_img.append(nn.AdaptiveAvgPool2d(1))
         self.frequency_encode_img = nn.Sequential(*self.frequency_encode_img)
         self.frequency_encode_img_sub =  nn.Sequential(
-            Linear(pt_size, pt_size // 2, activate='lrelu'), 
-            Linear(pt_size // 2, pt_size, activate='lrelu'), 
-            Linear(pt_size, pt_size, activate='lrelu')
+            Linear(tmp_out_channel, tmp_out_channel, activate='lrelu'), 
+            Linear(tmp_out_channel, tmp_out_channel, activate=None), 
+            Linear(tmp_out_channel, tmp_out_channel, activate=None)
         )
         
         #
-        in_channels = in_channels * (1 + 1) + 2 + 2 + 1 # Plus embedding
+        in_channels = in_channels * (1 + 1 + 1) + 2 + 2 # Plus embedding
         self.batch_attention = nn.Sequential(
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size), 
@@ -194,7 +195,7 @@ class LinePredictor(nn.Module):
         x = torch.cat([
             x_pt_feature, 
             x_pt_cnts.reshape(b, self.max_point, -1, 1), 
-            x_freq_img.reshape(b, self.max_point, 1, 1), 
+            x_freq_img.reshape(b, 1, c, 1).repeat(1, self.max_point, 1, 1), 
             ], dim=2
         )
         #  + self.batch_attention_2(x_pt_feature * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1))
