@@ -197,14 +197,14 @@ class LinePredictor(nn.Module):
             x_pt_feature, 
             x_pt_cnts.reshape(b, self.max_point, -1, 1), 
             # x_freq_img.reshape(b, self.max_point, 1, 1), 
-            x_cls.reshape(b, 1, -1, 1).repeat(1, self.max_point, 1, 1)
             ], dim=2
         )
         #  + self.batch_attention_2(x_pt_feature * x_freq_img.reshape(b, self.max_point, 1, 1).repeat(1, 1, c, 1))
         x = self.batch_attention(x)
         x = torch.cat([
             x, 
-            x_pt_feature
+            x_pt_feature, 
+            x_cls.reshape(b, 1, -1, 1).repeat(1, self.max_point, 1, 1)
         ], dim=2)
         # x = torch.cat([
         #     x, 
