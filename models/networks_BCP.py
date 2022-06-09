@@ -123,14 +123,8 @@ class LinePredictor(nn.Module):
         self.batch_attention = nn.Sequential(
             SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size), 
-            SelfAttentionBlock(pt_size), 
             SelfAttentionBlock(pt_size)
         )
-        # self.batch_attention_2 = nn.Sequential(
-        #     SelfAttentionBlock(pt_size), 
-        #     SelfAttentionBlock(pt_size), 
-        #     SelfAttentionBlock(pt_size)
-        # )
 
         self.frequency_head = nn.Sequential(
             Linear(in_channels, in_channels, activate='lrelu'), 
@@ -218,14 +212,9 @@ class LinePredictor(nn.Module):
         # 
         x_freq = self.frequency_head(x)
         x = torch.cat([x, x_freq], dim=1)
+        # x = x * x_freq
         x_pred = self.params_pred(x) 
         x_freq = self.frequency_pred(x_freq).squeeze()
-        # print(x.shape)
-        # x_freq = x_freq.squeeze()
-        # tmp_freq = []
-        # for i in range(b):
-        #     tmp_freq.append(x_freq[i][:size_per_img[i]])
-        # x_freq = torch.cat(tmp_freq, dim=0)
         return x_pred, x_freq
 
 class ClassPredictor(nn.Module):

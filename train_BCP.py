@@ -71,13 +71,16 @@ def train(args, epoch, iterations, net, optim, train_loader):
         #     torch.ones_like(contour_target_frequency[contour_target_key_frequency], dtype=contour_pred_frequency.dtype)
         # )
 
+        sum_of_trig = torch.sum(contour_target_frequency)
+        sum_of_trig = sum_of_trig if sum_of_trig != 0 else 1
         loss_frequency_zero = torch.tensor(0.)
         contour_target_frequency = ~contour_target_frequency
         if torch.sum(contour_target_frequency) != 0:
             loss_frequency_zero = F.l1_loss(
                 contour_pred_frequency[contour_target_frequency], 
-                torch.zeros_like(contour_target_frequency[contour_target_frequency], dtype=contour_pred_frequency.dtype)
-            )
+                torch.zeros_like(contour_target_frequency[contour_target_frequency], dtype=contour_pred_frequency.dtype), 
+                reduction='sum'
+            ) / sum_of_trig
 
         contour_target_pred = torch.cat(preds["target_pts"], dim=0)
         contour_target_gt = torch.cat([t["points"][:, 2:4] for t in annotation], dim=0) * VALUE_WEIGHT
