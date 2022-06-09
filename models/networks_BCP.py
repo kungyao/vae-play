@@ -138,6 +138,7 @@ class LinePredictor(nn.Module):
 
         self.frequency_pred = nn.Sequential(
             Linear(in_channels, in_channels, activate='lrelu'), 
+            Linear(in_channels, in_channels, activate='lrelu'), 
             Linear(in_channels, 1, activate=None),
             nn.Sigmoid()
         )
