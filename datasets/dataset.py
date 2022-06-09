@@ -530,7 +530,7 @@ class BCPDataset(Dataset):
         height = mask.height
         center_x = width * 0.5
         center_y = height * 0.5
-        random_rotation = np.random.uniform(-30, 30)
+        random_rotation = np.random.uniform(-15, 15)
         random_rotation_radian = random_rotation * np.pi / 180
         offset_x, offset_y = random_offset(mask.getbbox(), height)
         scale = 1 / height
