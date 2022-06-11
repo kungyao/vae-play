@@ -19,7 +19,7 @@ def test_collate_fn_BCP(batch):
     bmasks = torch.stack(bmasks, dim=0)
     return imgs, bmasks
 
-def save_test_batch(imgs, bmasks, classes, contours, contour_targets, result_path, result_name):
+def save_test_batch(imgs, bmasks, classes, contours, contour_targets, gt_annotation, result_path, result_name):
     b, c, h, w = imgs.shape
     
     results = []
@@ -45,8 +45,36 @@ def save_test_batch(imgs, bmasks, classes, contours, contour_targets, result_pat
         tmp_b = TF.to_tensor(tmp_b)
         results.append(tmp_b)
     results = torch.stack(results, dim=0)
+    if gt_annotation is not None:
+        gt_results = []
+        contour_targets = [t["points"][:, 2:4].cpu() for t in gt_annotation]
+        for i in range(b):
+            tmp_b = bmasks[i].clone()
+            tmp_b = torch.permute(tmp_b, (1, 2, 0))
+            tmp_b = np.ascontiguousarray(tmp_b.numpy()).astype(np.uint8) * 255
+            # Contour不用 /VALUE_WEIGHT
+            cnt = (contours[i] * 0.5 + 0.5) * h
+            # cnt_target = ((contour_targets[i] / VALUE_WEIGHT) * 0.5 + 0.5) * h
+            cnt_target = ((contours[i] + contour_targets[i]) * 0.5 + 0.5) * h
+            cnt_size = len(cnt)
+            if classes[i] == 1:
+                for j in range(cnt_size):
+                    pt = cnt[j].to(dtype=torch.long).tolist()
+                    end_pt = cnt_target[j].to(dtype=torch.long).tolist()
+                    cv2.line(tmp_b, (pt[0], pt[1]), (end_pt[0], end_pt[1]), (255, 255, 255), thickness=1)
+            else:
+                for j in range(cnt_size):
+                    pt = cnt_target[j].to(dtype=torch.long).tolist()
+                    end_pt = cnt_target[(j+1)%cnt_size].to(dtype=torch.long).tolist()
+                    cv2.line(tmp_b, (pt[0], pt[1]), (end_pt[0], end_pt[1]), (255, 255, 255), thickness=1)
+            tmp_b = TF.to_tensor(tmp_b)
+            gt_results.append(tmp_b)
+        gt_results = torch.stack(gt_results, dim=0)
+        results = torch.cat([imgs, gt_results, results], dim=0)
+    else:
+        results = torch.cat([imgs, results], dim=0)
     vutils.save_image(
-        torch.cat([imgs, bmasks, results], dim=0), 
+        results, 
         os.path.join(result_path, f"{result_name}.png"),
         nrow=b, 
         padding=2, 
@@ -96,5 +124,5 @@ if __name__ == "__main__":
             _, classes = torch.max(preds["classes"], dim=1)
             contours = [x.cpu() for x in preds["contours"]]
             contour_targets = [x.cpu() for x in preds["target_pts"]]
-            save_test_batch(imgs, bmasks, classes, contours, contour_targets, res_output, f"test_{i}")
+            save_test_batch(imgs, bmasks, classes, contours, contour_targets, None, res_output, f"test_{i}")
             
