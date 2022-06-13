@@ -302,3 +302,62 @@ class ComposeNet(nn.Module):
             "target_pts": x, 
             "target_frequency": x_freq, 
         }
+
+class Discriminator(nn.Module):
+    def __init__(self, image_size, pt_size=4096):
+        super().__init__()
+        self.max_point = pt_size
+        # sx, sy, ex, ey
+        self.target_sub_dim = 4
+        max_channels = 512
+
+        self.global_convs = []
+        level = int(np.log2(image_size)) - 2 - 1
+        in_channel = 32
+        self.global_convs.append(Conv2d(3, in_channel, 3, stride=2, bn=None, activate="lrelu"))
+        out_channel = min(in_channel * 2, max_channels)
+        for _ in range(level - 1):
+            self.global_convs.append(Conv2d(in_channel, out_channel, 3, stride=2, bn="instance", activate="lrelu"))
+            in_channel = out_channel
+            out_channel = min(in_channel * 2, max_channels)
+        self.global_convs.append(Conv2d(in_channel, max_channels, 1, stride=1, bn=None, activate="lrelu"))
+        self.global_convs.append(nn.AdaptiveAvgPool2d(1))
+        self.global_convs = nn.Sequential(*self.global_convs)
+
+        self.local_convs = []
+        in_channel = pt_size * self.target_sub_dim
+        out_channel = min(in_channel // 2, max_channels)
+        for _ in range(level):
+            self.local_convs.append(Linear(in_channel, in_channel, bias=None, activate='tanh'))
+            self.local_convs.append(Linear(in_channel, out_channel, bias=None, activate=None))
+            in_channel = out_channel
+            out_channel = min(in_channel // 2, max_channels)
+        self.local_convs.append(Linear(in_channel, max_channels, bias=None, activate='lrelu'))
+        self.local_convs = nn.Sequential(*self.local_convs)
+
+        self.merge_convs = nn.Sequential(
+            Linear(max_channels * 2, max_channels * 2, bias=True, activate='lrelu'), 
+            Linear(max_channels * 2, max_channels, bias=True, activate='lrelu'), 
+            Linear(max_channels, max_channels, bias=True, activate='lrelu'), 
+            Linear(max_channels, max_channels // 2, bias=True, activate='lrelu'), 
+            Linear(max_channels // 2, 1, bias=False, activate=None), 
+            nn.Sigmoid()
+        )
+
+    def process_target(self, target:torch.Tensor):
+        if target.size(0) < self.max_point:
+            padding = torch.zeros(self.max_point - target.size(0), self.target_sub_dim, dtype=target.dtype, device=target.device)
+            target = torch.cat([target, padding], 0)
+        return target
+
+    def forward(self, imgs, targets):
+        # Assert that target.size(0) also means point size is smaller than self.max_point.
+        targets = torch.stack([self.process_target(t) for t in targets], dim=0)
+        targets = targets.reshape(targets.size(0), -1)
+        # 
+        global_feat = self.global_convs(imgs).squeeze()
+        local_feat = self.local_convs(targets)
+        # 
+        merge_feat = torch.cat([global_feat, local_feat], dim=1)
+        out = self.merge_convs(merge_feat).squeeze()
+        return out

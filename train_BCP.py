@@ -12,7 +12,7 @@ from tqdm import tqdm, trange
 from torch.utils.data import DataLoader
 
 from datasets .dataset import BCPDataset
-from models.networks_BCP import ComposeNet, VALUE_WEIGHT
+from models.networks_BCP import ComposeNet, VALUE_WEIGHT, Discriminator
 from test_BCP import save_test_batch
 from tools.ops import initialize_model
 from tools.utils import makedirs
@@ -24,8 +24,9 @@ def train_collate_fn(batch):
     labels = torch.tensor(labels)
     return imgs, bmasks, labels, annotation
 
-def train(args, epoch, iterations, net, optim, train_loader):
+def train(args, epoch, iterations, net, disc, optim, optim_disc, train_loader):
     net.train()
+    disc.train()
     
     count = 0
     avg_loss = {
@@ -34,10 +35,13 @@ def train(args, epoch, iterations, net, optim, train_loader):
         "loss_frequency_zero": 0, 
         "loss_total_regress": 0, 
         "loss_key_regress": 0, 
+        "d_adv_real": 0, 
+        "d_adv_fake": 0, 
+        "g_adv_loss": 0, 
     }
 
     train_iter = iter(train_loader)
-    for i in trange(iterations):
+    for iter_count in trange(iterations):
         try:
             imgs, bmasks, labels, annotation = next(train_iter)
         except:
@@ -50,9 +54,36 @@ def train(args, epoch, iterations, net, optim, train_loader):
         labels = labels.cuda(args.gpu)
         annotation = [{k: v.cuda(args.gpu) for k, v in t.items()} for t in annotation]
 
-        preds = net(imgs, target=annotation)
+        # D
+        with torch.no_grad():
+            preds = net(imgs, target=annotation)
+            # (b, n, 4)
+            fake_targets = []
+            pred_cnts = preds["contours"]
+            pred_target_pts = preds["target_pts"]
+            for i in range(b):
+                # To (n, 4)
+                fake_targets.append(torch.cat([pred_cnts[i] * VALUE_WEIGHT, pred_target_pts[i]], dim=1))
+            # (b, n, 4)
+            real_targets = []
+            for i in range(b):
+                # To (n, 4)
+                real_targets.append(annotation[i]["points"][:, :4] * VALUE_WEIGHT)
+        adv_real_out = disc(imgs, real_targets)
+        adv_fake_out = disc(imgs, fake_targets)
 
-        # size = [len(t["total"]) for t in annotation]
+        d_adv_real = F.binary_cross_entropy(adv_real_out, torch.ones_like(adv_real_out, device=adv_real_out.device))
+        d_adv_fake = F.binary_cross_entropy(adv_fake_out, torch.zeros_like(adv_fake_out, device=adv_fake_out.device))
+        d_adv_loss = (d_adv_real + d_adv_fake) * 0.5
+
+        optim_disc.zero_grad()
+        d_adv_loss.backward()
+        optim_disc.step()
+
+        # G
+        preds = net(imgs, target=annotation)
+        pred_cnts = preds["contours"]
+        pred_target_pts = preds["target_pts"]
 
         loss_class = F.cross_entropy(preds["classes"], labels)
         
@@ -82,7 +113,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
                 reduction='sum'
             ) / sum_of_trig
 
-        contour_target_pred = torch.cat(preds["target_pts"], dim=0)
+        contour_target_pred = torch.cat(pred_target_pts, dim=0)
         contour_target_gt = torch.cat([t["points"][:, 2:4] for t in annotation], dim=0) * VALUE_WEIGHT
         loss_total_regress = F.l1_loss(
             contour_target_pred, 
@@ -94,32 +125,19 @@ def train(args, epoch, iterations, net, optim, train_loader):
         loss_key_regress = torch.sum(loss_key_regress, dim=1)
         loss_key_regress = torch.mean(loss_key_regress, dim=0)
 
-        # loss_key_regress = []
-        # for cnt_idx in range(len(annotation)):
-        #     anno = annotation[cnt_idx]
-        #     # 怕有誤差，準確來說是要 == 1.0
-        #     select = anno["points"][:, 5] > 0.9
-        #     if torch.sum(select) != 0:
-        #         loss_key = torch.abs(preds["target_pts"][cnt_idx][select] - anno["points"][select, 2:4] * VALUE_WEIGHT)
-        #         # times length for another weight
-        #         loss_key = torch.sum(loss_key, dim=1) # * anno["points"][select, 4]
-        #         loss_key = torch.mean(loss_key)
-        #         loss_key_regress.append(loss_key)
-        #     else:
-        #         loss_key_regress.append(torch.tensor(0.))
-        # loss_key_regress = torch.mean(torch.stack(loss_key_regress, dim=0))
+        g_targets = []
+        for i in range(b):
+            # To (n, 4)
+            g_targets.append(torch.cat([pred_cnts[i] * VALUE_WEIGHT, pred_target_pts[i]], dim=1))
+        g_adv_pred = disc(imgs, g_targets)
+        g_adv_loss = F.binary_cross_entropy(g_adv_pred, torch.ones_like(g_adv_pred, device=g_adv_pred.device))
 
-        # losses = loss_class * 1 + loss_frequency * 4 + loss_total_regress * 4 + loss_key_regress * 5
-        # losses = loss_class * 1 + loss_frequency * 2 + loss_total_regress * 4 + loss_key_regress * 5 (b)
-        # losses = loss_class * 1 + loss_frequency * 4 + loss_total_regress * 4 + loss_key_regress * 10 (s)
-        # losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 2 + loss_total_regress * 10 + loss_key_regress * 5
-        # losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 10 + loss_total_regress * 10 + loss_key_regress * 5
-        losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 4.0 + loss_total_regress * 10 + loss_key_regress * 6
+        losses = loss_class * 1 + (loss_frequency_one + loss_frequency_zero) * 4.0 + loss_total_regress * 10 + loss_key_regress * 6 + g_adv_loss
 
         optim.zero_grad()
         losses.backward()
         optim.step()
-
+        
         with torch.no_grad():
             next_count = count + imgs.size(0)
             avg_loss["loss_class"] = (avg_loss["loss_class"] * count + loss_class.item()) / next_count
@@ -127,9 +145,12 @@ def train(args, epoch, iterations, net, optim, train_loader):
             avg_loss["loss_frequency_zero"] = (avg_loss["loss_frequency_zero"] * count + loss_frequency_zero.item()) / next_count
             avg_loss["loss_total_regress"] = (avg_loss["loss_total_regress"] * count + loss_total_regress.item()) / next_count
             avg_loss["loss_key_regress"] = (avg_loss["loss_key_regress"] * count + loss_key_regress.item()) / next_count
+            avg_loss["d_adv_real"] = (avg_loss["d_adv_real"] * count + d_adv_real.item()) / next_count
+            avg_loss["d_adv_fake"] = (avg_loss["d_adv_fake"] * count + d_adv_fake.item()) / next_count
+            avg_loss["g_adv_loss"] = (avg_loss["g_adv_loss"] * count + g_adv_loss.item()) / next_count
             count = next_count
 
-            if (i+1) % args.viz_freq == 0:
+            if (iter_count+1) % args.viz_freq == 0:
                 print("")
                 res_str = f"[Epoch: {epoch}]。"
                 for key in avg_loss:
@@ -139,7 +160,7 @@ def train(args, epoch, iterations, net, optim, train_loader):
                 _, classes = torch.max(preds["classes"], dim=1)
                 split_contour_pts = [x.cpu() for x in preds["contours"]]
                 split_preds_target_pts = [x.cpu() for x in preds["target_pts"]]
-                save_test_batch(imgs, bmasks, classes, split_contour_pts, split_preds_target_pts, annotation, args.res_output, f"{epoch}_{i+1}")
+                save_test_batch(imgs, bmasks, classes, split_contour_pts, split_preds_target_pts, annotation, args.res_output, f"{epoch}_{iter_count+1}")
     return
 
 if __name__ == "__main__":
@@ -147,6 +168,7 @@ if __name__ == "__main__":
     parser.add_argument('--path', type=str, dest='path', default="D:/Manga/bubble-cnt-data")
     # 
     parser.add_argument('--lr', type=float, dest='lr', default=1e-3)
+    parser.add_argument('--lr_disc', type=float, dest='lr_disc', default=1e-3)
     parser.add_argument('--gpu', type=int, dest='gpu', default=0)
     parser.add_argument('--epoch', type=int, dest='epochs', default=1)
     parser.add_argument('--iterations', type=int, dest='iterations', default=200)
@@ -185,21 +207,27 @@ if __name__ == "__main__":
         pin_memory=True)
     
     net = ComposeNet(args.img_size, pt_size=args.max_points)
+    disc = Discriminator(args.img_size, pt_size=args.max_points)
+
     initialize_model(net)
+    initialize_model(disc)
 
     net.cuda(args.gpu)
+    disc.cuda(args.gpu)
 
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+    optim_disc = torch.optim.Adam(disc.parameters(), lr=args.lr_disc)
     # step_size = 2
     # # step_size = args.epochs // 4
     # step_size = 1 if step_size == 0 else step_size
     # scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size, gamma=0.5)
 
     for epoch in range(args.epochs):
-        train(args, epoch, args.iterations, net, optim, dloader)
+        train(args, epoch, args.iterations, net, disc, optim, optim_disc, dloader)
         torch.save(
             {
                 "networks": net, 
+                "discriminator": disc, 
                 # "optims": optim,
                 "epoch": epoch
             }, 
