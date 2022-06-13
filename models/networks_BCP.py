@@ -1,5 +1,4 @@
 from copy import deepcopy
-from math import log2
 
 import numpy as np
 import torch
@@ -101,7 +100,7 @@ class LinePredictor(nn.Module):
         
         # 
         self.frequency_encode_img = []
-        level = int(log2(image_size)) - 1
+        level = int(np.log(image_size)) - 1
         tmp_channel = in_channels
         tmp_out_channel = min(in_channels, tmp_channel * 2)
         for _ in range(level):
