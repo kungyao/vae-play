@@ -132,8 +132,7 @@ class Up(nn.Module):
         self.if_add_coord = if_add_coord
         coord_channel = 2 if if_add_coord else 0
         self.conv = nn.Sequential(
-            Conv2d(in_channel + coord_channel, in_channel, 3, stride=1, bn="batch"), 
-            Conv2d(in_channel, out_channel, 3, stride=1, bn="batch"), 
+            Conv2d(in_channel + coord_channel, out_channel, 3, stride=1, bn="batch"), 
             Conv2d(out_channel, out_channel, 3, stride=1, bn="batch")
         )
         if if_add_coord:
