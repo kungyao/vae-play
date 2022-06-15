@@ -133,7 +133,8 @@ class BTransform(object):
         # Set random seed for doing same operation for input data.
         seed = random.randint(0, 2147483647)
         # Do
-        img = self.do_operation(img, seed, False)
+        # set background to white for training BE model.
+        img = self.do_operation(img, seed, True)
         bimg = self.do_operation(bimg, seed, False)
         eimg = self.do_operation(eimg, seed, False)
 
