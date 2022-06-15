@@ -85,7 +85,7 @@ if __name__ == "__main__":
     #
     parser.add_argument('--workers', type=int, dest='workers', default=0)
     # 
-    parser.add_argument('--img_size', type=int, dest='img_size', default=256)
+    parser.add_argument('--img_size', type=int, dest='img_size', default=512)
     # parser.add_argument('--max_points', type=int, dest='max_points', default=DEFAULT_MAX_POINTS)
     #
     parser.add_argument('--res_output', type=str, dest='res_output', default='./results')

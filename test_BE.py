@@ -65,7 +65,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
     parser.add_argument("--path", type=str, dest='path', default="D:/Manga/bubble-gen-label", help="Data path")
     parser.add_argument("--model_path", type=str, dest='model_path', default=None, help="Model path")
-    parser.add_argument('--img_size', type=int, dest='img_size', default=256)
+    parser.add_argument('--img_size', type=int, dest='img_size', default=512)
     parser.add_argument('--gpu', type=int, dest='gpu', default=0)
     parser.add_argument('--batchsize', type=int, dest='batchsize', default=16)
     parser.add_argument('--debug', action="store_true", dest='debug')
