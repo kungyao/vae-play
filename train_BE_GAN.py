@@ -19,6 +19,7 @@ def train_collate_fn(batch):
     imgs, bimgs, eimgs, labels = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
+    eimgs = torch.stack(eimgs, dim=0)
     labels = torch.as_tensor(labels, dtype=torch.int64)
     return imgs, bimgs, eimgs, labels
 
