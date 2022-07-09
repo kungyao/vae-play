@@ -169,8 +169,8 @@ class BEDataset(Dataset):
                 self.imgs.append(os.path.join(cls_folder, f"{name}.{ext}"))
 
                 if not if_test:
-                    self.labels.append(int(cls_name))
                     self.masks.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
+                    self.labels.append(int(cls_name))
     
     def __len__(self):
         return len(self.imgs)
@@ -186,8 +186,8 @@ class BEDataset(Dataset):
             bg = np.where((mask[:,:,0]==255) & (mask[:,:,1]==255) & (mask[:,:,2]==255))
             mask[bg] = (0, 0, 0)
             # 
-            eimg = mask[:, :, 1]
             bimg = mask[:, :, 0]
+            eimg = mask[:, :, 1]
             label = self.labels[idx]
         else:
             bimg = None
@@ -674,3 +674,86 @@ class BCPDatasetTEST(Dataset):
         bmask = bmask.repeat(3, 1, 1)
         return img, bmask
 
+def bbox2(img):
+    rows = np.any(img, axis=1)
+    cols = np.any(img, axis=0)
+    rmin, rmax = np.where(rows)[0][[0, -1]]
+    cmin, cmax = np.where(cols)[0][[0, -1]]
+    return rmin, cmin, rmax, cmax
+
+# Bubble & Edge
+class BEGanDataset(Dataset):
+    def __init__(self, data_path, img_size, if_test=False) -> None:
+        super().__init__()
+        self.imgs = []
+        self.masks = []
+        self.labels = []
+
+        self.if_test = if_test
+        self.img_size = img_size
+        for cls_name in os.listdir(data_path):
+            if not if_test:
+                if cls_name not in ["1", "2", "3"]:
+                    continue
+            else:
+                if cls_name not in ["test"]:
+                    continue
+            
+            cls_folder = os.path.join(data_path, cls_name)
+            for patch in os.listdir(cls_folder):
+                if "layer" in patch or "mask" in patch or "edge" in patch or "bubble" in patch:
+                    continue
+                name, ext = patch.split(".")[:2]
+                self.imgs.append(os.path.join(cls_folder, f"{name}.{ext}"))
+
+                if not if_test:
+                    self.masks.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
+                    self.labels.append(int(cls_name))
+    
+    def __len__(self):
+        return len(self.imgs)
+
+    def __getitem__(self, idx):
+        # 
+        img = Image.open(self.imgs[idx], "r").convert("RGB")
+        img = img.resize((self.img_size, self.img_size))
+        img = TF.to_tensor(mask)
+        if not self.if_test:
+            # 
+            mask = Image.open(self.masks[idx], "r").convert("RGB")
+            mask = mask.resize((self.img_size, self.img_size), resample=Image.NEAREST)
+            mask = np.array(mask)
+            bg = np.where((mask[:,:,0]==255) & (mask[:,:,1]==255) & (mask[:,:,2]==255))
+            mask[bg] = (0, 0, 0)
+            # 
+            bimg = mask[:, :, 0]
+            eimg = mask[:, :, 1]
+            label = self.labels[idx]
+            bounding_box = bbox2(eimg)
+            # 
+            bimg = TF.to_tensor(bimg)
+            eimg = TF.to_tensor(eimg)
+
+            # 
+            random_rotation = np.random.uniform(-15, 15) # random_rotation = 0.0
+            offset_x, offset_y = random_offset(bounding_box, self.img_size)
+
+            if offset_x != 0 or offset_y != 0:
+                img = TF.affine(img, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
+                bimg = TF.affine(bimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
+                eimg = TF.affine(eimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
+                
+            if torch.rand(1) < 0.5:
+                img = TF.vflip(img)
+                bimg = TF.vflip(bimg)
+                eimg = TF.vflip(eimg)
+
+            if torch.rand(1) < 0.5:
+                img = TF.hflip(img)
+                bimg = TF.hflip(bimg)
+                eimg = TF.hflip(eimg)
+        else:
+            bimg = None
+            eimg = None
+            label = None
+        return img, bimg, eimg, label
