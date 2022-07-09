@@ -16,8 +16,8 @@ class PartialEncoder(nn.Module):
         # 
         self.convs = []
         repeat_num = int(np.log2(in_size)) - 2
-        self.convs = [Conv2d(in_channels, 8, 3, stride=1, bn="instance")]
-        in_channels = 8
+        self.convs = [Conv2d(in_channels, 32, 3, stride=1, bn="instance")]
+        in_channels = 32
         out_channels = min(in_channels * 2, max_channel)
         for _ in range(repeat_num): 
             self.convs.append(Conv2d(in_channels, out_channels, 3, stride=2, bn="instance"))
@@ -97,9 +97,9 @@ class ComposeNet(nn.Module):
     def __init__(self, in_channels, in_size, latent_size):
         super().__init__()
         # Feature extract
-        min_channel = 8
+        min_channel = 16
         max_channel = 32
-        min_in_size = int(np.power(2, 3))
+        min_in_size = int(np.power(2, 4))
         repeat_num = int(np.log2(in_size // min_in_size))
         
         # 
@@ -194,3 +194,35 @@ class ComposeNet(nn.Module):
         }
         return output
 
+class Discriminator(nn.Module):
+    def __init__(self, in_channels, in_size):
+        super().__init__()
+        max_channel = 64
+        min_in_size = int(np.power(2, 4))
+        repeat_num = int(np.log2(in_size // min_in_size))
+
+        self.convs = nn.Sequential(
+            Conv2d(in_channels, 16, 3, 2, bn=None, activate='lrelu'), 
+            Conv2d(16, 32, 3, 2, bn=None, activate='lrelu'), 
+        )
+        in_channels = 32
+        out_channels = min(in_channels * 2, max_channel)
+        self.feat_modules = nn.ModuleList()
+        for _ in range(repeat_num):
+            self.feat_modules .append(Conv2d(in_channels, out_channels, 3, 2, bn='batch', activate='lrelu'))
+            in_channels = out_channels
+            out_channels = min(in_channels * 2, max_channel)
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor):
+        # 
+        x = x[:, 0, :, :].reshape(x.size(0), 1, x.size(2), x.size(3))
+        x = torch.cat([x, y], dim=1)
+        # 
+        x = self.convs(x)
+        # 
+        feat_list = []
+        for idx, m in enumerate(self.feat_modules):
+            x = m(x)
+            feat_list.append(x.reshape(x.size(0), -1) * (idx // 2 + 1))
+        x = torch.cat(feat_list, dim=1)
+        return x

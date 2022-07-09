@@ -25,15 +25,22 @@ def train_collate_fn(batch):
 
 def train(args, epoch, iterations, nets, optims, train_loader):
     G = nets["G"]
+    D = nets["D"]
+
     g_opt = optims["G"]
     g_opt_style_c = optims["Style_C"]
     g_opt_style_b = optims["Style_B"]
+    d_opt = optims["D"]
+
     G.train()
+    D.train()
     
     count = 0
     avg_loss = {
+        "d_adv_loss": 0,
         "loss_edge": 0,
         "loss_mask": 0,
+        "g_adv_loss": 0,
         "loss_style_content": 0,
         "loss_style_boundary": 0,
     }
@@ -54,44 +61,66 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         # Boundary only image
         eimgs = eimgs.cuda(args.gpu)
         labels = labels.cuda(args.gpu)
+        merged_mask = torch.cat([bimgs, eimgs], dim=1)
 
-        # 
+        # D
+        with torch.no_grad():
+            preds = G(imgs, y=merged_mask)
+            pred_masks = preds["masks"]
+            pred_edges = preds["edges"]
+        d_fake = D(imgs, torch.cat([pred_masks, pred_edges], dim=1))
+        d_real = D(imgs, merged_mask)
+        d_adv_loss = 1 - torch.mean(torch.abs(d_fake - d_real))
+
+        d_opt.zero_grad()
+        d_adv_loss.backward()
+        d_opt.step()
+
+        # G - GT
         preds = G(imgs, y=torch.cat([bimgs, eimgs], dim=1))
         pred_masks = preds["masks"]
         pred_edges = preds["edges"]
 
+        g_real = D(imgs, merged_mask)
+        g_pred = D(imgs, torch.cat([pred_masks, pred_edges], dim=1))
+
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, eimgs) + compute_dice_loss(pred_edges.sigmoid(), eimgs)
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, bimgs) + compute_dice_loss(pred_masks.sigmoid(), bimgs)
-        losses = loss_egde + loss_mask
+        g_adv_loss = torch.mean(torch.abs(g_pred - g_real))
+        losses = loss_egde + loss_mask + g_adv_loss
 
         g_opt.zero_grad()
         losses.backward()
         g_opt.step()
 
-        # 
-        with torch.no_grad():
-            style_codes_gt = G.forward_latent(imgs, y=torch.cat([bimgs, eimgs], dim=1))
-        style_codes_pred = G.forward_latent(imgs)
+        if epoch > 0:
+            # G - Style
+            with torch.no_grad():
+                style_codes_gt = G.forward_latent(imgs, y=torch.cat([bimgs, eimgs], dim=1))
+            style_codes_pred = G.forward_latent(imgs)
 
-        c_code_gt, b_code_gt = style_codes_gt
-        c_code_pred, b_code_pred = style_codes_pred
+            c_code_gt, b_code_gt = style_codes_gt
+            c_code_pred, b_code_pred = style_codes_pred
 
-        loss_style_content = F.l1_loss(c_code_pred, c_code_gt)
-        g_opt_style_c.zero_grad()
-        loss_style_content.backward()
-        g_opt_style_c.step()
+            loss_style_content = F.l1_loss(c_code_pred, c_code_gt)
+            g_opt_style_c.zero_grad()
+            loss_style_content.backward()
+            g_opt_style_c.step()
 
-        loss_style_boundary = F.l1_loss(b_code_pred, b_code_gt)
-        g_opt_style_b.zero_grad()
-        loss_style_boundary.backward()
-        g_opt_style_b.step()
+            loss_style_boundary = F.l1_loss(b_code_pred, b_code_gt)
+            g_opt_style_b.zero_grad()
+            loss_style_boundary.backward()
+            g_opt_style_b.step()
 
         # 
         next_count = count + imgs.size(0)
+        avg_loss["d_adv_loss"] = (avg_loss["d_adv_loss"] * count + d_adv_loss.item()) / next_count
         avg_loss["loss_edge"] = (avg_loss["loss_edge"] * count + loss_egde.item()) / next_count
         avg_loss["loss_mask"] = (avg_loss["loss_mask"] * count + loss_mask.item()) / next_count
-        avg_loss["loss_style_content"] = (avg_loss["loss_style_content"] * count + loss_style_content.item()) / next_count
-        avg_loss["loss_style_boundary"] = (avg_loss["loss_style_boundary"] * count + loss_style_boundary.item()) / next_count
+        avg_loss["g_adv_loss"] = (avg_loss["g_adv_loss"] * count + g_adv_loss.item()) / next_count
+        if epoch > 0:
+            avg_loss["loss_style_content"] = (avg_loss["loss_style_content"] * count + loss_style_content.item()) / next_count
+            avg_loss["loss_style_boundary"] = (avg_loss["loss_style_boundary"] * count + loss_style_boundary.item()) / next_count
         count = next_count
 
         if (i+1) % args.viz_freq == 0:
@@ -103,10 +132,15 @@ def train(args, epoch, iterations, nets, optims, train_loader):
             with torch.no_grad():
                 # with gt mask
                 preds = G(imgs, y=torch.cat([bimgs, eimgs], dim=1))
-                save_test_batch(imgs, preds, args.res_output, f"{epoch}_wgtm_{i+1}")
+                save_test_batch(imgs, preds, args.res_output, f"{epoch}_{i+1}_wgtm")
                 # no gt mask
                 preds = G(imgs, y=None)
-                save_test_batch(imgs, preds, args.res_output, f"{epoch}_ngtm_{i+1}")
+                save_test_batch(imgs, preds, args.res_output, f"{epoch}_{i+1}_ngtm")
+                # no mask
+                zero_mask = torch.zeros(imgs.size(0), 2, imgs.size(2), imgs.size(3))
+                zero_mask = zero_mask.cuda(args.gpu)
+                preds = G(imgs, y=zero_mask)
+                save_test_batch(imgs, preds, args.res_output, f"{epoch}_{i+1}_nembed")
     return
 
 if __name__ == "__main__":
@@ -117,7 +151,7 @@ if __name__ == "__main__":
     parser.add_argument('--gpu', type=int, dest='gpu', default=0)
     parser.add_argument('--epochs', type=int, dest='epochs', default=10)
     parser.add_argument('--iterations', type=int, dest='iterations', default=200)
-    parser.add_argument('--batchsize', type=int, dest='batchsize', default=32)
+    parser.add_argument('--batchsize', type=int, dest='batchsize', default=16)
     #
     parser.add_argument('--workers', type=int, dest='workers', default=0)
     # 
@@ -142,16 +176,20 @@ if __name__ == "__main__":
     record_txt.close()
 
     generator = ComposeNet(3, args.img_size, args.z_size)
+    discriminator = Discriminator(3, args.img_size)
 
     initialize_model(generator)
+    initialize_model(discriminator)
 
     nets = {}
     nets["G"] = generator
+    nets["D"] = discriminator
 
     optims = {}
     optims["G"] = torch.optim.Adam(generator.parameters(), lr=args.lr)
     optims["Style_C"] = torch.optim.Adam(generator.content_encoder.parameters(), lr=args.lr)
     optims["Style_B"] = torch.optim.Adam(generator.boundary_encoder.parameters(), lr=args.lr)
+    optims["D"] = torch.optim.Adam(discriminator.parameters(), lr=args.lr)
 
     for name, net in nets.items():
         nets[name] = net.cuda(args.gpu)
