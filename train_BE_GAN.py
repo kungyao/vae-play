@@ -23,17 +23,6 @@ def train_collate_fn(batch):
     labels = torch.as_tensor(labels, dtype=torch.int64)
     return imgs, bimgs, eimgs, labels
 
-def save_test_batch(x_org, x_ref, x_rec, x_stl, result_path, result_name):
-    b = x_org.size(0)
-
-    vutils.save_image(
-        torch.cat([x_org, x_ref, x_rec, x_stl], dim=0), 
-        os.path.join(result_path, f"{result_name}.png"),
-        nrow=b, 
-        padding=2, 
-        pad_value=1
-    )
-
 def train(args, epoch, iterations, nets, optims, train_loader):
     G = nets["G"]
     g_opt = optims["G"]
