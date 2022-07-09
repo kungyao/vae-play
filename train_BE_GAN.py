@@ -77,40 +77,36 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         d_opt.step()
 
         # G - GT
-        preds = G(imgs, y=torch.cat([bimgs, eimgs], dim=1))
+        preds = G(imgs, y=merged_mask)
         pred_masks = preds["masks"]
         pred_edges = preds["edges"]
 
         g_real = D(imgs, merged_mask)
         g_pred = D(imgs, torch.cat([pred_masks, pred_edges], dim=1))
 
-        loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, eimgs) + compute_dice_loss(pred_edges.sigmoid(), eimgs)
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, bimgs) + compute_dice_loss(pred_masks.sigmoid(), bimgs)
+        loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, eimgs) + compute_dice_loss(pred_edges.sigmoid(), eimgs)
         g_adv_loss = torch.mean(torch.abs(g_pred - g_real))
-        losses = loss_egde + loss_mask + g_adv_loss
+        losses = loss_mask + loss_egde + g_adv_loss
 
         g_opt.zero_grad()
         losses.backward()
         g_opt.step()
 
-        if epoch > 0:
-            # G - Style
-            with torch.no_grad():
-                style_codes_gt = G.forward_latent(imgs, y=torch.cat([bimgs, eimgs], dim=1))
-            style_codes_pred = G.forward_latent(imgs)
+        # G - Style
+        with torch.no_grad():
+            c_style_gt, b_style_gt = G.forward_latent(imgs, y=merged_mask)
+        c_style_pred, b_style_pred = G.forward_latent(imgs)
 
-            c_code_gt, b_code_gt = style_codes_gt
-            c_code_pred, b_code_pred = style_codes_pred
+        loss_style_content = F.l1_loss(c_style_pred, c_style_gt)
+        g_opt_style_c.zero_grad()
+        loss_style_content.backward()
+        g_opt_style_c.step()
 
-            loss_style_content = F.l1_loss(c_code_pred, c_code_gt)
-            g_opt_style_c.zero_grad()
-            loss_style_content.backward()
-            g_opt_style_c.step()
-
-            loss_style_boundary = F.l1_loss(b_code_pred, b_code_gt)
-            g_opt_style_b.zero_grad()
-            loss_style_boundary.backward()
-            g_opt_style_b.step()
+        loss_style_boundary = F.l1_loss(b_style_pred, b_style_gt)
+        g_opt_style_b.zero_grad()
+        loss_style_boundary.backward()
+        g_opt_style_b.step()
 
         # 
         next_count = count + imgs.size(0)
@@ -118,14 +114,13 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         avg_loss["loss_edge"] = (avg_loss["loss_edge"] * count + loss_egde.item()) / next_count
         avg_loss["loss_mask"] = (avg_loss["loss_mask"] * count + loss_mask.item()) / next_count
         avg_loss["g_adv_loss"] = (avg_loss["g_adv_loss"] * count + g_adv_loss.item()) / next_count
-        if epoch > 0:
-            avg_loss["loss_style_content"] = (avg_loss["loss_style_content"] * count + loss_style_content.item()) / next_count
-            avg_loss["loss_style_boundary"] = (avg_loss["loss_style_boundary"] * count + loss_style_boundary.item()) / next_count
+        avg_loss["loss_style_content"] = (avg_loss["loss_style_content"] * count + loss_style_content.item()) / next_count
+        avg_loss["loss_style_boundary"] = (avg_loss["loss_style_boundary"] * count + loss_style_boundary.item()) / next_count
         count = next_count
 
         if (i+1) % args.viz_freq == 0:
             print("")
-            res_str = ""
+            res_str = f"[Epoch: {epoch}]。"
             for key in avg_loss:
                 res_str += f"{key}: {round(avg_loss[key], 6)}; "
             print(res_str)

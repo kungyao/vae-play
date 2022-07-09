@@ -34,12 +34,7 @@ class PartialEncoder(nn.Module):
             Linear(latent_length, latent_length, bias=False, activate=None)
         )
     
-    def forward(self, x: torch.Tensor, mask: torch.Tensor):
-        # 
-        mask = mask.reshape(mask.size(0), 1, mask.size(-2), mask.size(-1))
-        mask = mask.repeat(1, 3, 1, 1)
-        # Focus
-        x = x * mask
+    def forward(self, x: torch.Tensor):
         # 
         x = self.convs(x)
         x = x.reshape(x.size(0), -1)
@@ -154,12 +149,24 @@ class ComposeNet(nn.Module):
 
     def forward_latent(self, x: torch.Tensor, y=None):
         if y is None:
-            y = torch.ones(x.size(0), 2, x.size(-2), x.size(-1))
-            y = y.to(dtype=x.dtype, device=x.device)
-        # 
-        content_code = self.content_encoder(x, y[:, 0, :, :][:, None])
-        boundary_code = self.boundary_encoder(x, y[:, 1, :, :][:, None])
+            content_code = self.content_encoder(x)
+            boundary_code = self.boundary_encoder(x)
+        else:
+            # 
+            c_mask = y[:, 0, :, :][:, None].repeat(1, 3, 1, 1)
+            b_mask = y[:, 1, :, :][:, None].repeat(1, 3, 1, 1)
+            # 
+            content_code = self.content_encoder(c_mask)
+            boundary_code = self.boundary_encoder(1.0 - b_mask)
         return content_code, boundary_code
+    
+    def forward_content_latent(self, x: torch.Tensor):
+        content_code = self.content_encoder(x)
+        return content_code
+
+    def forward_boundary_latent(self, x: torch.Tensor):
+        boundary_code = self.boundary_encoder(x)
+        return boundary_code
 
     def forward(self, x: torch.Tensor, y=None):
         # 
