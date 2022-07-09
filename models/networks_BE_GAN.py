@@ -152,18 +152,18 @@ class ComposeNet(nn.Module):
         # Generate edge mask
         self.edge_net = EdgeNet(min_channel)
 
-    def forward_latent(self, x: torch.Tensor, mask=None):
-        if mask is None:
-            mask = torch.ones(x.size(0), 2, x.size(-2), x.size(-1))
-            mask = mask.to(dtype=x.dtype, device=x.device)
+    def forward_latent(self, x: torch.Tensor, y=None):
+        if y is None:
+            y = torch.ones(x.size(0), 2, x.size(-2), x.size(-1))
+            y = y.to(dtype=x.dtype, device=x.device)
         # 
-        content_code = self.content_encoder(x, mask[:, 0, :, :][:, None])
-        boundary_code = self.boundary_encoder(x, mask[:, 1, :, :][:, None])
+        content_code = self.content_encoder(x, y[:, 0, :, :][:, None])
+        boundary_code = self.boundary_encoder(x, y[:, 1, :, :][:, None])
         return content_code, boundary_code
 
     def forward(self, x: torch.Tensor, y=None):
         # 
-        content_code, boundary_code = self.forward_latent(x, mask=y)
+        content_code, boundary_code = self.forward_latent(x, y=y)
         # 
         down_feats = []
         for m in self.down:
