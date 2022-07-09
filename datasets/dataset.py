@@ -739,7 +739,7 @@ class BEGanDataset(Dataset):
             offset_x, offset_y = random_offset(bounding_box, self.img_size)
 
             if offset_x != 0 or offset_y != 0:
-                img = TF.affine(img, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
+                img = TF.affine(img, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST, fill=1.0)
                 bimg = TF.affine(bimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
                 eimg = TF.affine(eimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
                 
