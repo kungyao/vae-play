@@ -717,7 +717,7 @@ class BEGanDataset(Dataset):
         # 
         img = Image.open(self.imgs[idx], "r").convert("RGB")
         img = img.resize((self.img_size, self.img_size))
-        img = TF.to_tensor(mask)
+        img = TF.to_tensor(img)
         if not self.if_test:
             # 
             mask = Image.open(self.masks[idx], "r").convert("RGB")
