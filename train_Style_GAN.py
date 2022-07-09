@@ -296,7 +296,7 @@ if __name__ == "__main__":
     parser.add_argument('--viz_freq', type=int, dest='viz_freq', default=100)
     args = parser.parse_args()
 
-    dest_name = os.path.join("BE_GAN", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    dest_name = os.path.join("Style_GAN", datetime.now().strftime("%Y%m%d-%H%M%S"))
     args.res_output = os.path.join(args.res_output, dest_name)
     args.model_output = os.path.join(args.model_output, dest_name)
 
