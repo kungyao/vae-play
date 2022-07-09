@@ -36,14 +36,16 @@ def save_test_batch(x_org, x_ref, x_rec, x_stl, result_path, result_name):
 def train(args, epoch, iterations, nets, optims, train_loader):
     G = nets["G"]
     g_opt = optims["G"]
-    g_opt_style = optims["Style"]
+    g_opt_style_c = optims["Style_C"]
+    g_opt_style_b = optims["Style_B"]
     G.train()
     
     count = 0
     avg_loss = {
         "loss_edge": 0,
         "loss_mask": 0,
-        "loss_style_codes": 0,
+        "loss_style_content": 0,
+        "loss_style_boundary": 0,
     }
 
     train_iter = iter(train_loader)
@@ -81,21 +83,25 @@ def train(args, epoch, iterations, nets, optims, train_loader):
             style_codes_gt = G.forward_latent(imgs, y=torch.cat([bimgs, eimgs], dim=1))
         style_codes_pred = G.forward_latent(imgs)
 
-        loss_style_codes = []
-        for code_gt, code_pred in zip(style_codes_gt, style_codes_pred):
-            loss_style_codes.append(F.l1_loss(code_pred, code_gt))
-        loss_style_codes = torch.stack(loss_style_codes, dim=0)
-        loss_style_codes = torch.sum(loss_style_codes)
+        c_code_gt, b_code_gt = style_codes_gt
+        c_code_pred, b_code_pred = style_codes_pred
 
-        g_opt_style.zero_grad()
-        loss_style_codes.backward()
-        g_opt_style.step()
+        loss_style_content = F.l1_loss(c_code_pred, c_code_gt)
+        g_opt_style_c.zero_grad()
+        loss_style_content.backward()
+        g_opt_style_c.step()
+
+        loss_style_boundary = F.l1_loss(b_code_pred, b_code_gt)
+        g_opt_style_b.zero_grad()
+        loss_style_boundary.backward()
+        g_opt_style_b.step()
 
         # 
         next_count = count + imgs.size(0)
         avg_loss["loss_edge"] = (avg_loss["loss_edge"] * count + loss_egde.item()) / next_count
         avg_loss["loss_mask"] = (avg_loss["loss_mask"] * count + loss_mask.item()) / next_count
-        avg_loss["loss_style_codes"] = (avg_loss["loss_style_codes"] * count + loss_style_codes.item()) / next_count
+        avg_loss["loss_style_content"] = (avg_loss["loss_style_content"] * count + loss_style_content.item()) / next_count
+        avg_loss["loss_style_boundary"] = (avg_loss["loss_style_boundary"] * count + loss_style_boundary.item()) / next_count
         count = next_count
 
         if (i+1) % args.viz_freq == 0:
@@ -154,11 +160,8 @@ if __name__ == "__main__":
 
     optims = {}
     optims["G"] = torch.optim.Adam(generator.parameters(), lr=args.lr)
-
-    style_params = []
-    style_params.append(generator.content_encoder.parameters())
-    style_params.append(generator.boundary_encoder.parameters())
-    optims["Style"] = torch.optim.Adam(style_params, lr=args.lr)
+    optims["Style_C"] = torch.optim.Adam(generator.content_encoder.parameters(), lr=args.lr)
+    optims["Style_B"] = torch.optim.Adam(generator.boundary_encoder.parameters(), lr=args.lr)
 
     for name, net in nets.items():
         nets[name] = net.cuda(args.gpu)
