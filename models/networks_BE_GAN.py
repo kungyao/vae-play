@@ -16,8 +16,8 @@ class PartialEncoder(nn.Module):
         # 
         self.convs = []
         repeat_num = int(np.log2(in_size)) - 2
-        self.convs = [Conv2d(in_channels, 32, 3, stride=1, bn="instance")]
-        in_channels = 32
+        self.convs = [Conv2d(in_channels, 8, 3, stride=1, bn="instance")]
+        in_channels = 8
         out_channels = min(in_channels * 2, max_channel)
         for _ in range(repeat_num): 
             self.convs.append(Conv2d(in_channels, out_channels, 3, stride=2, bn="instance"))
@@ -42,6 +42,7 @@ class PartialEncoder(nn.Module):
         x = x * mask
         # 
         x = self.convs(x)
+        x = x.reshape(x.size(0), -1)
         x = self.linears(x)
         return x
 
@@ -50,7 +51,7 @@ class LatentMapper(nn.Module):
         super().__init__()
         latent_length = latent_size * latent_size
         if_upsample = target_size > latent_size
-        if_donw_sample = latent_size < target_size
+        if_donw_sample = target_size < latent_size
         repeat_num = int(np.log2(max(latent_size, target_size) // min(latent_size, target_size)))
         self.convs = []
         for _ in range(repeat_num):
@@ -96,9 +97,9 @@ class ComposeNet(nn.Module):
     def __init__(self, in_channels, in_size, latent_size):
         super().__init__()
         # Feature extract
-        min_channel = 32
-        max_channel = 64
-        min_in_size = int(np.power(2, 8))
+        min_channel = 8
+        max_channel = 32
+        min_in_size = int(np.power(2, 3))
         repeat_num = int(np.log2(in_size // min_in_size))
         
         # 
@@ -137,8 +138,8 @@ class ComposeNet(nn.Module):
             out_channels = min(in_channels * 2, max_channel)
 
         # 
-        self.content_encoder = PartialEncoder(in_channels, in_size, latent_length)
-        self.boundary_encoder = PartialEncoder(in_channels, in_size, latent_length)
+        self.content_encoder = PartialEncoder(3, in_size, latent_length)
+        self.boundary_encoder = PartialEncoder(3, in_size, latent_length)
 
         self.content_code_size_mapping = nn.ModuleList()
         self.boundary_code_size_mapping = nn.ModuleList()
@@ -174,6 +175,7 @@ class ComposeNet(nn.Module):
             # Cat with latent code
             level_content_code = self.content_code_size_mapping[idx](content_code)
             level_boundary_code = self.boundary_code_size_mapping[idx](boundary_code)
+            
             x = torch.cat([x, level_content_code, level_boundary_code], dim=1)
             # Up-sampling
             x_up = self.up[idx](x)
