@@ -152,7 +152,9 @@ if __name__ == "__main__":
     # unknown, oval, explode, emit
     discriminator = Discriminator(3, args.img_size, 4)
 
-    initialize_model(generator)
+    initialize_model(generator.aux_convs)
+    initialize_model(generator.mask_net)
+    initialize_model(generator.edge_net)
     initialize_model(discriminator)
 
     nets = {}
