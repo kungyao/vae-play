@@ -63,8 +63,8 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         # D
         with torch.no_grad():
             preds = G(imgs)
-            pred_masks = preds["masks"]
-            pred_edges = preds["edges"]
+            pred_masks = preds["masks"].sigmoid()
+            pred_edges = preds["edges"].sigmoid()
         d_real_type, d_real_feats = D(imgs, bimgs, eimgs)
         d_fake_type, d_fake_feats = D(imgs, pred_masks, pred_edges)
 
@@ -83,7 +83,7 @@ def train(args, epoch, iterations, nets, optims, train_loader):
 
         with torch.no_grad():
             _, g_real_feats = D(imgs, bimgs, eimgs)
-        g_pred_type, g_pred_feats = D(imgs, pred_masks, pred_edges)
+        g_pred_type, g_pred_feats = D(imgs, pred_masks.sigmoid(), pred_edges.sigmoid())
 
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, bimgs) + compute_dice_loss(pred_masks.sigmoid(), bimgs)
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, eimgs) + compute_dice_loss(pred_edges.sigmoid(), eimgs)
