@@ -89,7 +89,7 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, eimgs) + compute_dice_loss(pred_edges.sigmoid(), eimgs)
         g_adv_loss = torch.mean(torch.abs(g_pred_feats - g_real_feats))
         g_type_loss = F.cross_entropy(g_pred_type, labels)
-        losses = loss_mask + loss_egde + g_adv_loss + g_type_loss
+        losses = loss_mask * 2 + loss_egde * 2 + g_adv_loss + g_type_loss
 
         g_opt.zero_grad()
         losses.backward()
@@ -101,7 +101,7 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         avg_loss["loss_edge"] = (avg_loss["loss_edge"] * count + loss_egde.item()) / next_count
         avg_loss["loss_mask"] = (avg_loss["loss_mask"] * count + loss_mask.item()) / next_count
         avg_loss["g_adv_loss"] = (avg_loss["g_adv_loss"] * count + g_adv_loss.item()) / next_count
-        avg_loss["g_type_loss"] = (avg_loss["g_type_loss"] * count + g_adv_loss.item()) / next_count
+        avg_loss["g_type_loss"] = (avg_loss["g_type_loss"] * count + g_type_loss.item()) / next_count
         count = next_count
 
         if (i+1) % args.viz_freq == 0:
