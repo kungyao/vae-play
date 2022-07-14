@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from test_BE import save_test_batch
 
-from datasets.dataset import BEGanDataset
+from datasets.dataset import BEGanDataset, ImageDataset
 from models.networks_BE_GAN import *
 from tools.ops import *
 from tools.utils import makedirs
@@ -23,7 +23,7 @@ def train_collate_fn(batch):
     labels = torch.as_tensor(labels, dtype=torch.int64)
     return imgs, bimgs, eimgs, labels
 
-def train(args, epoch, iterations, nets, optims, train_loader):
+def train(args, epoch, iterations, nets, optims, train_loader, aug_sets=None):
     G = nets["G"]
     D = nets["D"]
 
@@ -43,8 +43,20 @@ def train(args, epoch, iterations, nets, optims, train_loader):
         "g_type_loss": 0
     }
 
+    if aug_sets is not None:
+        aug_dset, aug_iter, aug_dloader = aug_sets
+
     train_iter = iter(train_loader)
     for i in trange(iterations):
+        if aug_sets is not None:
+            if i % 10 == 0:
+                try:
+                    aug_imgs = next(aug_iter)
+                except:
+                    aug_iter = iter(aug_dloader)
+                    aug_imgs = next(aug_iter)
+                train_loader.dataset.synthesis_target = aug_imgs[0]
+
         try:
             imgs, bimgs, eimgs, labels = next(train_iter)
         except:
@@ -119,6 +131,7 @@ def train(args, epoch, iterations, nets, optims, train_loader):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--path', type=str, dest='path', default="D:/Manga/bubble-gen-label")
+    parser.add_argument('--aug_path', type=str, dest='aug_path', default=None)
     # 
     parser.add_argument('--lr', type=float, dest='lr', default=1e-4)
     parser.add_argument('--gpu', type=int, dest='gpu', default=0)
@@ -177,8 +190,24 @@ if __name__ == "__main__":
         collate_fn=train_collate_fn, 
         pin_memory=True)
 
+    aug_dset = None
+    aug_iter = None
+    aug_dloader = None
+    if args.aug_path is not None:
+        aug_dset = ImageDataset(args.aug_path)
+        aug_dloader = DataLoader(
+            aug_dset, 
+            batch_size=1, 
+            shuffle=True, 
+            collate_fn=ImageDataset.collate_fn, 
+            pin_memory=True)
+        aug_iter = iter(aug_dloader)
+
     for epoch in range(args.epochs):
-        train(args, epoch, args.iterations, nets, optims, dloader)
+        if args.aug_path is not None:
+            train(args, epoch, args.iterations, nets, optims, dloader, (aug_dset, aug_iter, aug_dloader))
+        else:
+            train(args, epoch, args.iterations, nets, optims, dloader)
         torch.save(
             {
                 "networks": nets, 

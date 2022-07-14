@@ -683,6 +683,36 @@ def bbox2(img):
     rmin, rmax = np.where(cols)[0][[0, -1]]
     return rmin, cmin, rmax, cmax
 
+class ImageDataset(Dataset):
+    def __init__(self, manga_root_folder):
+        self.imgs = []
+        for manga in os.listdir(manga_root_folder):
+            if manga not in ["AttackOnTitan", "DragonBall", "InitialD", "KurokosBasketball", "OnePiece"]:
+                continue
+            m_path = os.path.join(manga_root_folder, manga)
+            for epi in os.listdir(m_path):
+                m_e_path = os.path.join(m_path, epi)
+                for chapter in os.listdir(m_e_path):
+                    m_e_c_path = os.path.join(m_e_path, chapter)
+                    # to manga page
+                    origin_size_manga_folder = os.path.join(m_e_c_path, 'OriginSizeManga')
+                    if not os.path.exists(origin_size_manga_folder):
+                        continue
+                    for page in os.listdir(origin_size_manga_folder):
+                        self.imgs.append(os.path.join(origin_size_manga_folder, page))
+    @staticmethod
+    def collate_fn(batch):
+        imgs = batch
+        return imgs
+
+    def __getitem__(self, index: int):
+        img = Image.open(self.imgs[index]).convert('RGB')
+        img = TF.to_tensor(img)
+        return img
+
+    def __len__(self):
+        return len(self.imgs)
+
 # Bubble & Edge
 class BEGanDataset(Dataset):
     def __init__(self, data_path, img_size, if_test=False) -> None:
@@ -711,7 +741,9 @@ class BEGanDataset(Dataset):
                 if not if_test:
                     self.masks.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
                     self.labels.append(int(cls_name))
-    
+        
+        self.synthesis_target = None
+
     def __len__(self):
         return len(self.imgs)
 
@@ -742,9 +774,9 @@ class BEGanDataset(Dataset):
 
             if offset_x != 0 or offset_y != 0:
                 img = TF.affine(img, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST, fill=1.0)
-                bimg = TF.affine(bimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
-                eimg = TF.affine(eimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST)
-                
+                bimg = TF.affine(bimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST, fill=0.0)
+                eimg = TF.affine(eimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST, fill=0.0)
+
             if torch.rand(1) < 0.5:
                 img = TF.vflip(img)
                 bimg = TF.vflip(bimg)
@@ -754,6 +786,17 @@ class BEGanDataset(Dataset):
                 img = TF.hflip(img)
                 bimg = TF.hflip(bimg)
                 eimg = TF.hflip(eimg)
+            
+            if self.synthesis_target is not None:
+                half = self.img_size // 2
+                h, w = self.synthesis_target.shape[-2:]
+                xmin = np.random.randint(half, w - half- 1) - half
+                ymin = np.random.randint(half, h - half - 1) - half
+                tmp_img = self.synthesis_target[:, ymin:ymin+self.img_size, xmin:xmin+self.img_size].clone().detach()
+                total_mask = torch.logical_or(bimg, eimg).repeat(3, 1, 1)
+                tmp_img[total_mask] = img[total_mask]
+                img = tmp_img
+                img = TF.gaussian_blur(img, 5)
         else:
             bimg = None
             eimg = None
