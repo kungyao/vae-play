@@ -162,8 +162,8 @@ if __name__ == "__main__":
     nets["D"] = discriminator
 
     optims = {}
-    optims["G"] = torch.optim.Adam(generator.parameters(), lr=args.lr)
-    optims["D"] = torch.optim.Adam(discriminator.parameters(), lr=args.lr)
+    optims["G"] = torch.optim.Adam(generator.parameters(), lr=args.lr, betas=(0.5, 0.999))
+    optims["D"] = torch.optim.Adam(discriminator.parameters(), lr=args.lr, betas=(0.5, 0.999))
 
     for name, net in nets.items():
         nets[name] = net.cuda(args.gpu)
