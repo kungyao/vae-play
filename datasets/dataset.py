@@ -458,7 +458,7 @@ class BPDatasetTEST(Dataset):
         # img = torch.multiply(img, eimg) + (1 - eimg)
         return img, bimg
 
-def random_offset(bbox, img_size, maximum=100):
+def random_offset(bbox, img_size, maximum=50):
     left, upper, right, lower = bbox
     # 
     left = min(left, maximum)
@@ -677,8 +677,10 @@ class BCPDatasetTEST(Dataset):
 def bbox2(img):
     rows = np.any(img, axis=1)
     cols = np.any(img, axis=0)
-    rmin, rmax = np.where(rows)[0][[0, -1]]
-    cmin, cmax = np.where(cols)[0][[0, -1]]
+    # y
+    cmin, cmax = np.where(rows)[0][[0, -1]]
+    # x
+    rmin, rmax = np.where(cols)[0][[0, -1]]
     return rmin, cmin, rmax, cmax
 
 # Bubble & Edge

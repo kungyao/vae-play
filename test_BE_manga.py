@@ -475,7 +475,7 @@ if __name__ == "__main__":
     obj = torch.load(args.model_path, map_location=f"cuda:{args.gpu}")
     net = ComposeNet()
     net.load_state_dict(obj["networks"].state_dict())
-    res_output = "./results/manga"
+    res_output = "./results/manga/BE"
     makedirs(res_output)
 
     # main_mask(args, net, res_output, None) "DragonBall", 
