@@ -106,7 +106,7 @@ class MaskMapper(nn.Module):
         feat_list = []
         for idx, m in enumerate(self.feat_modules):
             x = m(x)
-            feat_list.append(x.reshape(x.size(0), -1) * (idx + 1))
+            feat_list.append(x.reshape(x.size(0), -1) * (idx // 2 + 1))
         # 
         feat_list = torch.cat(feat_list, dim=1)
         x = self.pooler(x)
@@ -116,7 +116,7 @@ class MaskMapper(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, in_channels, in_size, num_classes):
         super().__init__()
-        max_channel = 128
+        max_channel = 64
         self.num_classes = num_classes
         self.content_disc = MaskMapper(2, in_size, max_channel=max_channel)
         self.boundary_disc = MaskMapper(2, in_size, max_channel=max_channel)
