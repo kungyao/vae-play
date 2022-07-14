@@ -75,7 +75,7 @@ class ComposeNet(nn.Module):
 class MaskMapper(nn.Module):
     def __init__(self, in_channels, in_size, max_channel=128):
         super().__init__()
-        min_in_size = int(np.power(2, 4))
+        min_in_size = int(np.power(2, 3))
         repeat_num = int(np.log2(in_size // min_in_size)) - 2
 
         self.convs = nn.Sequential(
@@ -86,7 +86,12 @@ class MaskMapper(nn.Module):
         out_channels = min(in_channels * 2, max_channel)
         self.feat_modules = nn.ModuleList()
         for _ in range(repeat_num):
-            self.feat_modules .append(Conv2d(in_channels, out_channels, 3, 2, bn='batch', activate='lrelu'))
+            self.feat_modules .append(
+                nn.Sequential(
+                    Conv2d(in_channels, out_channels, 3, 2, bn='batch', activate='lrelu'), 
+                    Conv2d(out_channels, out_channels, 3, 1, bn='batch', activate='lrelu'), 
+                )
+            )
             in_channels = out_channels
             out_channels = min(in_channels * 2, max_channel)
         self.pooler = nn.Sequential(
@@ -95,14 +100,13 @@ class MaskMapper(nn.Module):
         )
     
     def forward(self, x: torch.Tensor, m: torch.Tensor):
-        x = x[:, 0, :, :].reshape(x.size(0), 1, x.size(2), x.size(3))
         x = torch.cat([x, m], dim=1)
         # 
         x = self.convs(x)
         feat_list = []
         for idx, m in enumerate(self.feat_modules):
             x = m(x)
-            feat_list.append(x.reshape(x.size(0), -1) * (idx // 2 + 1))
+            feat_list.append(x.reshape(x.size(0), -1) * (idx + 1))
         # 
         feat_list = torch.cat(feat_list, dim=1)
         x = self.pooler(x)
@@ -112,11 +116,11 @@ class MaskMapper(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, in_channels, in_size, num_classes):
         super().__init__()
-        max_channel = 64
+        max_channel = 128
         self.num_classes = num_classes
         self.content_disc = MaskMapper(2, in_size, max_channel=max_channel)
         self.boundary_disc = MaskMapper(2, in_size, max_channel=max_channel)
-    
+        
         self.predictor = nn.Sequential(
             Linear(max_channel*2, max_channel*2, bias=True, activate='lrelu'), 
             Linear(max_channel*2, max_channel, bias=True, activate='lrelu'), 
@@ -124,7 +128,10 @@ class Discriminator(nn.Module):
         )
 
     def forward(self, x: torch.Tensor, m1: torch.Tensor, m2: torch.Tensor):
+        x = x[:, 0, :, :].reshape(x.size(0), 1, x.size(2), x.size(3))
+        # 
         x_m1, feats_m1 = self.content_disc(x, m1)
+        # Boundary is black
         x_m2, feats_m2 = self.boundary_disc(x, m2)
         # 
         feats = torch.cat([feats_m1, feats_m2], dim=1)
