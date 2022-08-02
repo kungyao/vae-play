@@ -21,7 +21,7 @@ class FeatureNet(nn.Module):
         self.backbone = resnet_fpn_backbone('resnet50', True)
         # 
         self.aux_convs = []
-        target_out_channels = 32
+        target_out_channels = 128
         in_channels = self.backbone.out_channels
         repeat_num = int(np.log2(in_channels // target_out_channels))
         for _ in range(repeat_num):
@@ -136,14 +136,19 @@ class MaskMapper(nn.Module):
         return x, feat_list
 
 class Discriminator(nn.Module):
-    def __init__(self, in_channels, in_size, num_classes):
+    def __init__(self, in_channels, in_size, num_params, num_classes):
         super().__init__()
         max_channel = 64
         self.num_classes = num_classes
         self.content_disc = MaskMapper(2, in_size, max_channel=max_channel)
         self.boundary_disc = MaskMapper(2, in_size, max_channel=max_channel)
         
-        self.predictor = nn.Sequential(
+        self.predictor_param = nn.Sequential(
+            Linear(max_channel*2, max_channel*2, bias=True, activate='lrelu'), 
+            Linear(max_channel*2, max_channel, bias=True, activate='lrelu'), 
+            Linear(max_channel, num_params, bias=False, activate=None), 
+        )
+        self.predictor_cls = nn.Sequential(
             Linear(max_channel*2, max_channel*2, bias=True, activate='lrelu'), 
             Linear(max_channel*2, max_channel, bias=True, activate='lrelu'), 
             Linear(max_channel, num_classes, bias=False, activate=None), 
@@ -158,8 +163,9 @@ class Discriminator(nn.Module):
         # 
         feats = torch.cat([feats_m1, feats_m2], dim=1)
         x = torch.cat([x_m1, x_m2], dim=1)
-        x = self.predictor(x)
-        return x, feats
+        x_cls = self.predictor_cls(x)
+        x_param = self.predictor_param(x)
+        return x_cls, x_param, feats
 
 if __name__ == "__main__":
     print("")

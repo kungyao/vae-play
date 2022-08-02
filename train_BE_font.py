@@ -80,13 +80,13 @@ def train(args, epoch, nets, optims, base_loader, kana_loader, transform):
         kana_edge_masks = kana_edge_masks.cuda(args.gpu)
         train_content_styles = train_content_styles.cuda(args.gpu)
         
-        label_disc = torch.zeros((b, 143), dtype=train_content_styles.dtype)
-        label_disc[torch.LongTensor(range(b)), labels] = 1
-        label_disc = label_disc.cuda(args.gpu)
-        train_y_map = {
-            "cls": label_disc, 
-            "cnt_style": train_content_styles
-        }
+        # label_disc = torch.zeros((b, 143), dtype=train_content_styles.dtype)
+        # label_disc[torch.LongTensor(range(b)), labels] = 1
+        # label_disc = label_disc.cuda(args.gpu)
+        # train_y_map = {
+        #     "cls": label_disc, 
+        #     "cnt_style": train_content_styles
+        # }
 
         if WITH_DISC:
             # D
@@ -94,12 +94,14 @@ def train(args, epoch, nets, optims, base_loader, kana_loader, transform):
                 preds = G(kana_imgs)
                 pred_masks = preds["masks"].sigmoid()
                 pred_edges = preds["edges"].sigmoid()
-            d_real_type, d_real_feats = D(kana_imgs, kana_masks, kana_edge_masks)
-            d_fake_type, d_fake_feats = D(kana_imgs, pred_masks, pred_edges)
+            # x_cls, x_param, feats
+            d_real_type, d_real_param, d_real_feats = D(kana_imgs, kana_masks, kana_edge_masks)
+            d_fake_type, d_fake_param, d_fake_feats = D(kana_imgs, pred_masks, pred_edges)
 
             d_adv_loss = 1 - torch.mean(torch.abs(d_fake_feats - d_real_feats))
-            d_type_loss = F.cross_entropy(d_real_type, labels)
-            d_losses = d_adv_loss + d_type_loss
+            d_type_loss = F.cross_entropy(d_real_type, labels) + (1 - torch.mean(torch.abs(d_fake_type - d_real_type))) * 0.2
+            d_param_loss = F.l1_loss(d_real_param, train_content_styles) + (1 - torch.mean(torch.abs(d_fake_param - d_real_param))) * 0.2
+            d_losses = d_adv_loss + d_type_loss + d_param_loss
 
             d_opt.zero_grad()
             d_losses.backward()
@@ -112,8 +114,8 @@ def train(args, epoch, nets, optims, base_loader, kana_loader, transform):
 
         if WITH_DISC:
             with torch.no_grad():
-                _, g_real_feats = D(kana_imgs, kana_masks, kana_edge_masks)
-            g_pred_type, g_pred_feats = D(kana_imgs, pred_masks.sigmoid(), pred_edges.sigmoid())
+                g_real_type, g_real_param, g_real_feats = D(kana_imgs, kana_masks, kana_edge_masks)
+            g_pred_type, g_pred_param, g_pred_feats = D(kana_imgs, pred_masks.sigmoid(), pred_edges.sigmoid())
 
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, kana_masks) + compute_dice_loss(pred_masks.sigmoid(), kana_masks)
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, kana_edge_masks) + compute_dice_loss(pred_edges.sigmoid(), kana_edge_masks)
@@ -121,8 +123,9 @@ def train(args, epoch, nets, optims, base_loader, kana_loader, transform):
 
         if WITH_DISC:
             g_adv_loss = torch.mean(torch.abs(g_pred_feats - g_real_feats))
-            g_type_loss = F.cross_entropy(g_pred_type, labels)
-            losses = losses + g_adv_loss + g_type_loss
+            g_type_loss = torch.mean(torch.abs(g_pred_type - g_real_type)) # F.cross_entropy(g_pred_type, labels)
+            g_param_loss = torch.mean(torch.abs(g_pred_param - g_real_param)) # F.cross_entropy(g_pred_type, labels)
+            losses = losses + g_adv_loss + g_type_loss + g_param_loss
 
         g_opt.zero_grad()
         losses.backward()
@@ -140,7 +143,7 @@ def train(args, epoch, nets, optims, base_loader, kana_loader, transform):
 
         if (batch+1) % args.viz_freq == 0:
             print("")
-            res_str = f"[Epoch: {epoch}]。"
+            res_str = f"[Epoch: {epoch}。{batch}]。"
             for key in avg_loss:
                 res_str += f"{key}: {round(avg_loss[key], 6)}; "
             print(res_str)
@@ -156,7 +159,7 @@ if __name__ == "__main__":
     # 
     parser.add_argument('--lr', type=float, dest='lr', default=1e-4)
     parser.add_argument('--gpu', type=int, dest='gpu', default=0)
-    parser.add_argument('--epoch', type=int, dest='epochs', default=10)
+    parser.add_argument('--epoch', type=int, dest='epochs', default=20)
     parser.add_argument('--batchsize', type=int, dest='batchsize', default=32)
     #
     parser.add_argument('--workers', type=int, dest='workers', default=0)
@@ -166,8 +169,11 @@ if __name__ == "__main__":
     parser.add_argument('--res_output', type=str, dest='res_output', default='./results')
     parser.add_argument('--model_output', type=str, dest='model_output', default='./logs')
     parser.add_argument('--viz_freq', type=int, dest='viz_freq', default=20)
+    # 
+    parser.add_argument('--with_disc', action="store_true", dest='with_disc')
     args = parser.parse_args()
 
+    WITH_DISC = args.with_disc
     dest_name = os.path.join("BE_font", datetime.now().strftime("%Y%m%d-%H%M%S"))
     args.res_output = os.path.join(args.res_output, dest_name)
     args.model_output = os.path.join(args.model_output, dest_name)
@@ -198,7 +204,7 @@ if __name__ == "__main__":
     kana_loader = DataLoader(kana_dataset, batch_size=kana_batchsize, shuffle=True, num_workers=4, collate_fn=FEDataset.collate_fn)
 
     net = ComposeNet()
-    disc = Discriminator(3, args.img_size, 143)
+    disc = Discriminator(3, args.img_size, 5, 143)
 
     initialize_model(net.feature_net.aux_convs)
     initialize_model(net.mask_net)

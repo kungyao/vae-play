@@ -87,7 +87,7 @@ def paset_result_on_manga(img_path, bubble_recon_info, bubble_masks, bubble_labe
             tmp_edge = F.interpolate(tmp_edge[None], size=(size, size), mode='nearest')[0]
             merge_edge_mask[ymin:ymax, xmin:xmax] = tmp_edge[0, anchor_y:anchor_y+height, anchor_x:anchor_x+width]
             # merge_edge_mask = merge_edge_mask.to(dtype=torch.bool)
-
+            
             tmp_mask = pred_masks[i]
             tmp_mask = F.interpolate(tmp_mask[None], size=(size, size), mode='nearest')[0]
             merge_bubble_mask[ymin:ymax, xmin:xmax] = tmp_mask[0, anchor_y:anchor_y+height, anchor_x:anchor_x+width]
@@ -112,7 +112,6 @@ def paset_result_on_manga(img_path, bubble_recon_info, bubble_masks, bubble_labe
     merge_edge_mask = merge_edge_mask.to(dtype=torch.float)
     vutils.save_image(merge_edge_mask, os.path.join(result_path, f"{result_name}.png"))
     
-
 def load_manga(img_path, mask_path, bimage_size):
     img = np.array(Image.open(img_path).convert("RGB"))
     bubble_mask = np.array(Image.open(mask_path).convert("RGB"))
