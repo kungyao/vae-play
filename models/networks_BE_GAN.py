@@ -75,7 +75,7 @@ class ComposeNet(nn.Module):
 class MaskMapper(nn.Module):
     def __init__(self, in_channels, in_size, max_channel=128):
         super().__init__()
-        min_in_size = int(np.power(2, 3))
+        min_in_size = int(np.power(2, 4))
         repeat_num = int(np.log2(in_size // min_in_size)) - 2
 
         self.convs = nn.Sequential(

@@ -175,6 +175,44 @@ def compute_hinge_loss(logit, mode):
         loss = -logit.mean()
     return loss
 
+def dice_loss(inputs, targets, smooth = 1.):
+    nums = inputs.size(0)
+    iflat = inputs.view(nums, -1)
+    tflat = targets.view(nums, -1)
+    intersection = iflat * tflat
+    score = (2. * intersection.sum(1) + smooth) / (iflat.sum(1) + tflat.sum(1) + smooth)
+    score = 1 - score.sum() / nums
+    return score
+
+def edge_loss(mask_logits, mask_targets):
+    device = mask_logits.device
+    # make edge convolution
+    channels = 1
+    kernel_size = 3
+    # 
+    edge_kernel = torch.FloatTensor(
+        [
+            [-1, -1, -1], 
+            [-1, 8, -1], 
+            [-1, -1, -1], 
+        ]
+    )
+    edge_kernel = edge_kernel / 8
+    edge_kernel = edge_kernel.reshape(1, 1, kernel_size, kernel_size)
+    edge_kernel = edge_kernel.repeat(channels, 1, 1, 1)
+    edge_filter = torch.nn.Conv2d(channels, channels, kernel_size=kernel_size, padding=(kernel_size-1)//2, groups=channels, bias=False)
+    edge_filter.weight.data = edge_kernel
+    edge_filter.weight.requires_grad = False
+    #
+    filter = torch.nn.Sequential(edge_filter)
+    filter.to(device)
+    # 
+    gt_edge = filter(mask_targets).abs()
+    pred_edge = filter(mask_logits).abs()
+    # 
+    loss = dice_loss(pred_edge, gt_edge)
+    return loss
+
 def initialize_model(model):
     for m in model.modules():
         if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):

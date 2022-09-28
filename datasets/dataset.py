@@ -1,3 +1,4 @@
+from operator import index
 import os
 import sys
 import random
@@ -458,13 +459,25 @@ class BPDatasetTEST(Dataset):
         # img = torch.multiply(img, eimg) + (1 - eimg)
         return img, bimg
 
-def random_offset(bbox, img_size, maximum=50):
+def random_offset(bbox, img_size, maximum=None, offset=None):
     left, upper, right, lower = bbox
     # 
-    left = min(left, maximum)
-    upper = min(upper, maximum)
-    right = min(img_size - right, maximum)
-    lower = min(img_size - lower, maximum)
+    left = left
+    upper = upper
+    right = img_size - right
+    lower = img_size - lower
+    # 
+    if offset is not None:
+        left = left + offset
+        upper = upper + offset
+        right = right + offset
+        lower =   lower + offset
+    #
+    if maximum is not None:
+        left = min(left, maximum)
+        upper = min(upper, maximum)
+        right = min(right, maximum)
+        lower = min(lower, maximum)    
     # 
     left = -left + 1
     upper = -upper + 1
@@ -720,6 +733,8 @@ class BEGanDataset(Dataset):
         self.imgs = []
         self.masks = []
         self.labels = []
+        self.contours_content = []
+        self.contours_boundary = []
 
         self.if_test = if_test
         self.img_size = img_size
@@ -735,13 +750,16 @@ class BEGanDataset(Dataset):
             for patch in os.listdir(cls_folder):
                 if "layer" in patch or "mask" in patch or "edge" in patch or "bubble" in patch:
                     continue
-                name, ext = patch.split(".")[:2]
-                self.imgs.append(os.path.join(cls_folder, f"{name}.{ext}"))
+                name = patch.split(".")[0]
+                self.imgs.append(os.path.join(cls_folder, f"{name}.png"))
 
                 if not if_test:
-                    self.masks.append(os.path.join(cls_folder, f"{name}_layer.{ext}"))
+                    self.masks.append(os.path.join(cls_folder, f"{name}_layer.png"))
                     self.labels.append(int(cls_name))
-        
+                    with open(os.path.join(cls_folder, f"{name}.json"), 'r') as fp:
+                        annotation = json.load(fp)
+                    self.contours_content.append(np.array(annotation["points_content"], dtype=np.float32))
+                    self.contours_boundary.append(np.array(annotation["points_boundary"], dtype=np.float32))
         self.synthesis_target = None
 
     def __len__(self):
@@ -750,6 +768,8 @@ class BEGanDataset(Dataset):
     def __getitem__(self, idx):
         # 
         img = Image.open(self.imgs[idx], "r").convert("RGB")
+        width=  img.width
+        height = img.height
         img = img.resize((self.img_size, self.img_size))
         img = TF.to_tensor(img)
         if not self.if_test:
@@ -763,29 +783,81 @@ class BEGanDataset(Dataset):
             bimg = mask[:, :, 0]
             eimg = mask[:, :, 1]
             label = self.labels[idx]
-            bounding_box = bbox2(eimg)
+            # bounding_box = bbox2(eimg)
+            bounding_box = bbox2(bimg)
             # 
             bimg = TF.to_tensor(bimg)
             eimg = TF.to_tensor(eimg)
+            contour_content = self.contours_content[idx].copy()
+            contour_boundary = self.contours_boundary[idx].copy()
 
             # 
+            center_x = width * 0.5
+            center_y = height * 0.5
+            random_scaling = np.random.uniform(1.0, 1.3) # random_rotation = 0.0
             random_rotation = np.random.uniform(-15, 15) # random_rotation = 0.0
-            offset_x, offset_y = random_offset(bounding_box, self.img_size)
+            random_rotation_radian = random_rotation * np.pi / 180
+            offset_x, offset_y = random_offset(bounding_box, self.img_size, maximum=50, offset=None)
 
             if offset_x != 0 or offset_y != 0:
-                img = TF.affine(img, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST, fill=1.0)
-                bimg = TF.affine(bimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST, fill=0.0)
-                eimg = TF.affine(eimg, angle=random_rotation, translate=[offset_x, offset_y], scale=1.0, shear=0.0, interpolation=Image.NEAREST, fill=0.0)
+                img = TF.affine(img, angle=random_rotation, translate=[offset_x, offset_y], scale=random_scaling, shear=0.0, interpolation=Image.NEAREST, fill=1.0)
+                bimg = TF.affine(bimg, angle=random_rotation, translate=[offset_x, offset_y], scale=random_scaling, shear=0.0, interpolation=Image.NEAREST, fill=0.0)
+                eimg = TF.affine(eimg, angle=random_rotation, translate=[offset_x, offset_y], scale=random_scaling, shear=0.0, interpolation=Image.NEAREST, fill=0.0)
+                # 
+                contour_content[:, 0] -= center_x
+                contour_content[:, 1] -= center_y
+
+                transform_x = contour_content[:, 0] * np.cos(random_rotation_radian) - contour_content[:, 1] * np.sin(random_rotation_radian)
+                transform_y = contour_content[:, 0] * np.sin(random_rotation_radian) + contour_content[:, 1] * np.cos(random_rotation_radian)
+
+                transform_x *= random_scaling
+                transform_y *= random_scaling
+
+                contour_content[:, 0] = transform_x + center_x + offset_x
+                contour_content[:, 1] = transform_y + center_y + offset_y
+                # 
+                contour_boundary[:, 0] -= center_x
+                contour_boundary[:, 1] -= center_y
+
+                transform_x = contour_boundary[:, 0] * np.cos(random_rotation_radian) - contour_boundary[:, 1] * np.sin(random_rotation_radian)
+                transform_y = contour_boundary[:, 0] * np.sin(random_rotation_radian) + contour_boundary[:, 1] * np.cos(random_rotation_radian)
+
+                transform_x *= random_scaling
+                transform_y *= random_scaling
+
+                contour_boundary[:, 0] = transform_x + center_x + offset_x
+                contour_boundary[:, 1] = transform_y + center_y + offset_y
+
+            # to -1~-1
+            contour_content[:, 0:2] = (contour_content[:, 0:2] / width - 0.5) / 0.5
+            contour_boundary[:, 0:2] = (contour_boundary[:, 0:2] / width - 0.5) / 0.5
 
             if torch.rand(1) < 0.5:
                 img = TF.vflip(img)
                 bimg = TF.vflip(bimg)
                 eimg = TF.vflip(eimg)
+                # 
+                contour_content[:, 1] *= -1
+                contour_boundary[:, 1] *= -1
 
             if torch.rand(1) < 0.5:
                 img = TF.hflip(img)
                 bimg = TF.hflip(bimg)
                 eimg = TF.hflip(eimg)
+                # 
+                contour_content[:, 0] *= -1
+                contour_boundary[:, 0] *= -1
+
+            select = np.logical_and(
+                np.abs(contour_content[:, 0]) <= 1, 
+                np.abs(contour_content[:, 1]) <= 1
+            )
+            contour_content = torch.FloatTensor(contour_content[select])
+            select = np.logical_and(
+                np.abs(contour_boundary[:, 0]) <= 1, 
+                np.abs(contour_boundary[:, 1]) <= 1
+            )
+            contour_boundary = torch.FloatTensor(contour_boundary[select])
             
             if self.synthesis_target is not None:
                 half = self.img_size // 2
@@ -801,4 +873,6 @@ class BEGanDataset(Dataset):
             bimg = None
             eimg = None
             label = None
-        return img, bimg, eimg, label
+            contour_content = None
+            contour_boundary = None
+        return img, bimg, eimg, label, contour_content, contour_boundary

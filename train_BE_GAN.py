@@ -7,21 +7,67 @@ import torchvision.utils as vutils
 import torchvision.transforms.functional as TF
 from tqdm import tqdm, trange
 from torch.utils.data import DataLoader
+from torch.nn.functional import grid_sample
 
 from test_BE import save_test_batch
-
 from datasets.dataset import BEGanDataset, ImageDataset
 from models.networks_BE_GAN import *
+from models.networks_BC import find_tensor_contour
 from tools.ops import *
 from tools.utils import makedirs
 
 def train_collate_fn(batch):
-    imgs, bimgs, eimgs, labels = zip(*batch)
+    imgs, bimgs, eimgs, labels, contour_content, contour_boundary = zip(*batch)
     imgs = torch.stack(imgs, dim=0)
     bimgs = torch.stack(bimgs, dim=0)
     eimgs = torch.stack(eimgs, dim=0)
     labels = torch.as_tensor(labels, dtype=torch.int64)
-    return imgs, bimgs, eimgs, labels
+    return imgs, bimgs, eimgs, labels, contour_content, contour_boundary
+
+def visual_data(imgs, bimgs, eimgs, labels, contour_content, contour_boundary, result_path="./", result_name="result"):
+    import cv2
+    b, c, h, w = imgs.shape
+    
+    result_contents = []
+    result_boundarys = []
+    for i in range(b):
+        # 
+        tmp_b = np.zeros((h, w, c), dtype=np.uint8)
+        cnt_size = len(contour_content[i])
+        cnt_x = (contour_content[i][:, 0] * 0.5 + 0.5) * h
+        cnt_y = (contour_content[i][:, 1] * 0.5 + 0.5) * h
+        for j in range(cnt_size):
+            x_cur = int(cnt_x[j])
+            y_cur = int(cnt_y[j])
+            x_next = int(cnt_x[(j + 1)%cnt_size])
+            y_next = int(cnt_y[(j + 1)%cnt_size])
+            cv2.line(tmp_b, (x_cur, y_cur), (x_next, y_next), (255, 255, 255), thickness=1)
+        tmp_b = TF.to_tensor(tmp_b)
+        result_contents.append(tmp_b)
+        # 
+        tmp_b = np.zeros((h, w, c), dtype=np.uint8)
+        cnt_size = len(contour_boundary[i])
+        cnt_x = (contour_boundary[i][:, 0] * 0.5 + 0.5) * h
+        cnt_y = (contour_boundary[i][:, 1] * 0.5 + 0.5) * h
+        for j in range(cnt_size):
+            x_cur = int(cnt_x[j])
+            y_cur = int(cnt_y[j])
+            x_next = int(cnt_x[(j + 1)%cnt_size])
+            y_next = int(cnt_y[(j + 1)%cnt_size])
+            cv2.line(tmp_b, (x_cur, y_cur), (x_next, y_next), (255, 255, 255), thickness=1)
+        tmp_b = TF.to_tensor(tmp_b)
+        result_boundarys.append(tmp_b)
+    result_contents = torch.stack(result_contents, dim=0)
+    result_boundarys = torch.stack(result_boundarys, dim=0)
+    
+    vutils.save_image(
+        torch.cat([imgs, bimgs.repeat(1, 3, 1, 1), result_contents, eimgs.repeat(1, 3, 1, 1), result_boundarys], dim=0), 
+        os.path.join(result_path, f"{result_name}.png"),
+        nrow=b, 
+        padding=2, 
+        pad_value=1
+    )
+    return
 
 def train(args, epoch, iterations, nets, optims, train_loader, aug_sets=None):
     G = nets["G"]
@@ -40,7 +86,8 @@ def train(args, epoch, iterations, nets, optims, train_loader, aug_sets=None):
         "loss_edge": 0,
         "loss_mask": 0,
         "g_adv_loss": 0,
-        "g_type_loss": 0
+        "g_type_loss": 0, 
+        "loss_cnt": 0, 
     }
 
     if aug_sets is not None:
@@ -58,12 +105,13 @@ def train(args, epoch, iterations, nets, optims, train_loader, aug_sets=None):
                 train_loader.dataset.synthesis_target = aug_imgs[0]
 
         try:
-            imgs, bimgs, eimgs, labels = next(train_iter)
+            imgs, bimgs, eimgs, labels, contour_content, contour_boundary = next(train_iter)
         except:
             train_iter = iter(train_loader)
-            imgs, bimgs, eimgs, labels = next(train_iter)
-
-        b = imgs.size(0)
+            imgs, bimgs, eimgs, labels, contour_content, contour_boundary = next(train_iter)
+        # visual_data(imgs, bimgs, eimgs, labels, contour_content, contour_boundary)
+        # return
+        b, c, h, w = imgs.shape
         # Prepare data
         imgs = imgs.cuda(args.gpu)
         # Bubble only mask
@@ -71,6 +119,8 @@ def train(args, epoch, iterations, nets, optims, train_loader, aug_sets=None):
         # Boundary only image
         eimgs = eimgs.cuda(args.gpu)
         labels = labels.cuda(args.gpu)
+        # contour_content = contour_content.cuda(args.gpu)
+        # contour_boundary = contour_boundary.cuda(args.gpu)
 
         # D
         with torch.no_grad():
@@ -99,9 +149,35 @@ def train(args, epoch, iterations, nets, optims, train_loader, aug_sets=None):
 
         loss_mask = 0.5 * F.binary_cross_entropy_with_logits(pred_masks, bimgs) + compute_dice_loss(pred_masks.sigmoid(), bimgs)
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, eimgs) + compute_dice_loss(pred_edges.sigmoid(), eimgs)
+        # 
         g_adv_loss = torch.mean(torch.abs(g_pred_feats - g_real_feats))
         g_type_loss = F.cross_entropy(g_pred_type, labels)
-        losses = loss_mask * 2 + loss_egde * 2 + g_adv_loss + g_type_loss
+        # # 
+        # pred_cnts = find_tensor_contour(pred_masks)
+        # loss_cnt = 0
+        # for idx in range(b):
+        #     # 
+        #     cnt_content = torch.stack([contour_content[idx][:, 0], contour_content[idx][:, 1]], dim=1)
+        #     cnt_content = cnt_content.unsqueeze(0).unsqueeze(0).cuda(args.gpu)
+        #     content_contour_sample = grid_sample(pred_masks[idx][None].sigmoid(), cnt_content, mode='bilinear')
+        #     loss_cnt_c12 = F.l1_loss(content_contour_sample, torch.ones_like(content_contour_sample))
+        #     # 
+        #     normalized_pts = pred_cnts[idx]
+        #     normalized_pts[:, 0] = (normalized_pts[:, 0] - w) / w
+        #     normalized_pts[:, 1] = (normalized_pts[:, 1] - h) / h
+        #     normalized_pts = normalized_pts.unsqueeze(0).unsqueeze(0).cuda(args.gpu)
+        #     content_contour_sample = grid_sample(pred_masks[idx][None].sigmoid(), normalized_pts, mode='bilinear')
+        #     content_contour_sample_target = grid_sample(bimgs[idx][None].sigmoid(), normalized_pts, mode='bilinear')
+        #     loss_cnt_c21 = F.l1_loss(content_contour_sample, content_contour_sample_target)
+        #     # 
+        #     cnt_boundary = torch.stack([contour_boundary[idx][:, 0], contour_boundary[idx][:, 1]], dim=1)
+        #     cnt_boundary = cnt_boundary.unsqueeze(0).unsqueeze(0).cuda(args.gpu)
+        #     boundary_contour_sample = grid_sample(pred_edges[idx][None].sigmoid(), cnt_boundary, mode='bilinear')
+        #     loss_cnt_b = F.l1_loss(boundary_contour_sample, torch.ones_like(boundary_contour_sample))
+        #     loss_cnt = loss_cnt + loss_cnt_c12 + loss_cnt_c21 + loss_cnt_b
+        # loss_cnt = loss_cnt / b
+        loss_cnt = edge_loss(pred_masks.sigmoid(), bimgs) + edge_loss(pred_edges.sigmoid(), eimgs)
+        losses = loss_mask * 2 + loss_egde * 2 + g_adv_loss + g_type_loss + loss_cnt * 0.5
 
         g_opt.zero_grad()
         losses.backward()
@@ -114,6 +190,7 @@ def train(args, epoch, iterations, nets, optims, train_loader, aug_sets=None):
         avg_loss["loss_mask"] = (avg_loss["loss_mask"] * count + loss_mask.item()) / next_count
         avg_loss["g_adv_loss"] = (avg_loss["g_adv_loss"] * count + g_adv_loss.item()) / next_count
         avg_loss["g_type_loss"] = (avg_loss["g_type_loss"] * count + g_type_loss.item()) / next_count
+        avg_loss["loss_cnt"] = (avg_loss["loss_cnt"] * count + loss_cnt.item()) / next_count
         count = next_count
 
         if (i+1) % args.viz_freq == 0:
