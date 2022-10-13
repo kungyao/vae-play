@@ -1,3 +1,8 @@
+# 
+# Predict onomatopoeia mask.
+# Comment D block for non-GAN training.
+# 
+
 import os
 import argparse
 from datetime import datetime

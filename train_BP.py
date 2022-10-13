@@ -1,3 +1,10 @@
+# 
+# For generated ellipse-based bubble which type is emit line.
+# 1. Predict ellipse parameter (center_x, center_y, radius_x, radius_y, step) from input.
+# 2. Sample point from feature space according to ellipse parameter
+# 3. Predict emit line parameter ((is_trigger, end_x, end_y) for each contour point) according to ellipse parameter
+# 
+
 import os
 import argparse
 from datetime import datetime

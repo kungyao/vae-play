@@ -1,3 +1,11 @@
+# 
+# Assume bubble content and boundary mask already have.
+# 1. Extract contour points according to input bubble content mask
+# 2. Classify bubble boundary type (solid or emited).
+# 3. Predict contour frequency (to check if emit line exist).
+# 4. Predict end point (by calculate minimum distance between boundary contour and content contour).
+# 
+
 import os
 import argparse
 from datetime import datetime
@@ -49,6 +57,10 @@ def train(args, epoch, iterations, net, disc, optim, optim_disc, train_loader):
             imgs, bmasks, labels, annotation = next(train_iter)
 
         b = imgs.size(0)
+        # Special image data. 
+        # First channel is bubble image
+        # Second channel is content mask
+        # Third channel is boundary mask
         imgs = imgs.cuda(args.gpu)
         # bmasks = bmasks.cuda(args.gpu)
         labels = labels.cuda(args.gpu)

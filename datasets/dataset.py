@@ -363,7 +363,7 @@ class BPDataset(Dataset):
             }
             samples = []
             for sample in annotation["samples"]:
-                # x, y, nx, ny, length
+                # sx, sy, ex, ey, length, is_key
                 samples.append(sample)
             data["samples"] = samples
             self.infos.append(data)

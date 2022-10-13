@@ -1,3 +1,9 @@
+# Reference: PolyTransform: Deep Polygon Transformer for Instance Segmentation
+# 
+# 1. Predict bubble content and boundary mask.
+# 2. Extract contour according to predicted bubble content mask.
+# 3. Refine contour points by predicting offset of contour.
+# 
 import os
 import argparse
 from datetime import datetime
@@ -44,9 +50,13 @@ def train(args, epoch, net, optim, train_loader):
         # contours = [c.cuda(args.gpu) for c in contours]
 
         preds = net(imgs)
+        # Boundary mask
         pred_edges = preds["edges"]
+        # Content mask
         pred_masks = preds["masks"]
+        # Extract from predicted masks
         pred_cnts = preds["contours"]
+        # Predicted offset of contours
         pred_regs = preds["contour_regressions"]
 
         loss_egde = 0.5 * F.binary_cross_entropy_with_logits(pred_edges, eimgs) + compute_dice_loss(pred_edges.sigmoid(), eimgs)

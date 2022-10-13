@@ -1,3 +1,8 @@
+# 
+# train BE with GAN.
+# 1. Predict bubble content and boundary mask.
+# 
+
 import os
 import argparse
 from datetime import datetime
@@ -152,30 +157,6 @@ def train(args, epoch, iterations, nets, optims, train_loader, aug_sets=None):
         # 
         g_adv_loss = torch.mean(torch.abs(g_pred_feats - g_real_feats))
         g_type_loss = F.cross_entropy(g_pred_type, labels)
-        # # 
-        # pred_cnts = find_tensor_contour(pred_masks)
-        # loss_cnt = 0
-        # for idx in range(b):
-        #     # 
-        #     cnt_content = torch.stack([contour_content[idx][:, 0], contour_content[idx][:, 1]], dim=1)
-        #     cnt_content = cnt_content.unsqueeze(0).unsqueeze(0).cuda(args.gpu)
-        #     content_contour_sample = grid_sample(pred_masks[idx][None].sigmoid(), cnt_content, mode='bilinear')
-        #     loss_cnt_c12 = F.l1_loss(content_contour_sample, torch.ones_like(content_contour_sample))
-        #     # 
-        #     normalized_pts = pred_cnts[idx]
-        #     normalized_pts[:, 0] = (normalized_pts[:, 0] - w) / w
-        #     normalized_pts[:, 1] = (normalized_pts[:, 1] - h) / h
-        #     normalized_pts = normalized_pts.unsqueeze(0).unsqueeze(0).cuda(args.gpu)
-        #     content_contour_sample = grid_sample(pred_masks[idx][None].sigmoid(), normalized_pts, mode='bilinear')
-        #     content_contour_sample_target = grid_sample(bimgs[idx][None].sigmoid(), normalized_pts, mode='bilinear')
-        #     loss_cnt_c21 = F.l1_loss(content_contour_sample, content_contour_sample_target)
-        #     # 
-        #     cnt_boundary = torch.stack([contour_boundary[idx][:, 0], contour_boundary[idx][:, 1]], dim=1)
-        #     cnt_boundary = cnt_boundary.unsqueeze(0).unsqueeze(0).cuda(args.gpu)
-        #     boundary_contour_sample = grid_sample(pred_edges[idx][None].sigmoid(), cnt_boundary, mode='bilinear')
-        #     loss_cnt_b = F.l1_loss(boundary_contour_sample, torch.ones_like(boundary_contour_sample))
-        #     loss_cnt = loss_cnt + loss_cnt_c12 + loss_cnt_c21 + loss_cnt_b
-        # loss_cnt = loss_cnt / b
         loss_cnt = edge_loss(pred_masks.sigmoid(), bimgs) + edge_loss(pred_edges.sigmoid(), eimgs)
         losses = loss_mask * 2 + loss_egde * 2 + g_adv_loss + g_type_loss + loss_cnt * 0.5
 

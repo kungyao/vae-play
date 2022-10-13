@@ -1,3 +1,7 @@
+# 
+# 1. Predict bubble content and boundary mask.
+# 
+
 import os
 import argparse
 from datetime import datetime

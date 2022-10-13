@@ -1,3 +1,8 @@
+# 
+# 1. Predict style bubble.
+# 2. Input based bubble and style code for generating new bubble
+# 
+
 import os
 import argparse
 from datetime import datetime
